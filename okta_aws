@@ -10,97 +10,175 @@ import subprocess
 import sys
 import time
 
+import requests
 import toml
 from oktaauth import models
 
 # Renew credentials early
 grace_period = 600
 
-def load_config(profile):
-    fh = open(os.path.expanduser("~/.okta_aws.toml"))
-    toml_config = toml.loads(fh.read())
-    fh.close()
+class MyOktaSamlAuth(models.OktaSamlAuth):
+    """
+    The original oktaauth library doesn't deal with getting a new SAML session
+    without re-logging into okta, and so we need to override a few things.
+    The changes here keep track of the session cookie you get when you
+    initially auth with saml, and use that instead of re-logging in each time.
+    """
+    def __init__(self, okta_url, application_type, application_id, username,
+                 password, passcode):
+        models.OktaSamlAuth.__init__(self, okta_url, application_type,
+                                     application_id, username, password,
+                                     passcode)
+        self.sessionCookie = None
 
-    toml_config.setdefault('general', {})
+    def auth(self):
+        # If we are logging in for the first time, then we won't have a token
+        # set, nor cookies set.
+        onetimetoken = None
+        if self.sessionCookie is None:
+            onetimetoken = models.OktaAPIAuth.auth(self)
+        return self.assertion(self.saml(onetimetoken))
 
-    try:
-        config = dict(toml_config['general'], **toml_config[profile])
-    except KeyError:
-        print("Unable to find profile %s in config file" % profile)
-        sys.exit(1)
+    def saml(self, onetimetoken):
+        url = '{base}/app/{app}/{appid}/sso/saml'.format(
+            base=self.okta_url,
+            app=self.application_type,
+            appid=self.application_id)
 
-    required_config_options = [
-        'username',
-        'okta_server',
-        'apptype',
-        'appid',
-        'principal_arn',
-        'role_arn'
-    ]
+        if onetimetoken is not None:
+            # We're logging in for the first time and provided a one time
+            # token
+            resp = requests.get(url=url, params={'onetimetoken': onetimetoken})
+            self.sessionCookie = resp.cookies
+        else:
+            # We already logged in before and have a session cookie
+            resp = requests.get(url=url, cookies=self.sessionCookie)
 
-    missing_options = [k for k in required_config_options if k not in config]
-    if missing_options:
-        print("Missing required configuration settings: %s" %
-              ', '.join(missing_options))
-        sys.exit(1)
-    return config
+        if resp.status_code != 200:
+            raise Exception('Received error code from server: %s' %
+                            resp.status_code)
 
-def prompt_for_password(config):
-    print("Okta Username:", config['username'])
-    password = getpass.getpass("Okta Password: ")
+        return resp.text.decode('utf8')
 
-    # TODO - deal with MFA as needed
-    passcode = ""
+class OktaAWS(object):
+    def __init__(self, profile):
+        self.profile = profile
+        self.config = self.load_config(profile)
+        self.okta = None
 
-    return {
-        "password": password,
-        "passcode": passcode
-    }
+    def load_config(self, profile):
+        fh = open(os.path.expanduser("~/.okta_aws.toml"))
+        toml_config = toml.loads(fh.read())
+        fh.close()
 
-def get_saml_assertion(config, creds):
-    # Get SAML assertion
-    okta = models.OktaSamlAuth(config['okta_server'],
-                               config['apptype'], config['appid'],
-                               config['username'], creds['password'],
-                               creds['passcode'])
-    assertion = okta.auth()
+        toml_config.setdefault('general', {})
 
-    if not assertion:
-        print("Authentication failed")
+        try:
+            config = dict(toml_config['general'], **toml_config[profile])
+        except KeyError:
+            print("Unable to find profile %s in config file" % profile)
+            sys.exit(1)
 
-    return assertion
+        required_config_options = [
+            'username',
+            'okta_server',
+            'apptype',
+            'appid',
+            'principal_arn',
+            'role_arn'
+        ]
 
-def aws_assume_role(config, assertion):
-    # Get credentials from aws
-    output = subprocess.check_output([
-        "aws", "sts", "assume-role-with-saml",
-        "--role-arn", config['role_arn'],
-        "--principal-arn", config['principal_arn'],
-        "--saml-assertion", base64.b64encode(assertion)])
-    aws_creds = json.loads(output)
-    return aws_creds['Credentials']
+        missing_options = [k for k in required_config_options if k not in config]
+        if missing_options:
+            print("Missing required configuration settings: %s" %
+                  ', '.join(missing_options))
+            sys.exit(1)
+        return config
 
-def set_aws_config(profile, key, value):
-    subprocess.call(["aws", "configure", "set",
-                     "profile.%s.%s" % (profile, key), value])
+    def prompt_for_password(self, config):
+        print("Okta Username:", config['username'])
+        password = getpass.getpass("Okta Password: ")
 
-def store_aws_creds_in_profile(profile, aws_creds):
-    set_aws_config(profile, "aws_access_key_id", aws_creds['AccessKeyId'])
-    set_aws_config(profile, "aws_secret_access_key",
-                   aws_creds['SecretAccessKey'])
-    set_aws_config(profile, "aws_session_token", aws_creds['SessionToken'])
+        # TODO - deal with MFA as needed
+        passcode = ""
+
+        return {
+            "password": password,
+            "passcode": passcode
+        }
+
+    def get_saml_assertion(self, config, creds):
+        # Get SAML assertion
+        if self.okta is None:
+            self.okta = MyOktaSamlAuth(config['okta_server'],
+                                       config['apptype'], config['appid'],
+                                       config['username'], creds['password'],
+                                       creds['passcode'])
+        assertion = self.okta.auth()
+
+        if not assertion:
+            print("Authentication failed")
+
+        return assertion
+
+    def aws_assume_role(self, config, assertion):
+        # Get credentials from aws
+        output = subprocess.check_output([
+            "aws", "sts", "assume-role-with-saml",
+            "--role-arn", config['role_arn'],
+            "--principal-arn", config['principal_arn'],
+            "--saml-assertion", base64.b64encode(assertion)])
+        aws_creds = json.loads(output)
+        return aws_creds['Credentials']
+
+    def set_aws_config(self, profile, key, value):
+        subprocess.call(["aws", "configure", "set",
+                         "profile.%s.%s" % (profile, key), value])
+
+    def store_aws_creds_in_profile(self, profile, aws_creds):
+        self.set_aws_config(profile, "aws_access_key_id",
+                            aws_creds['AccessKeyId'])
+        self.set_aws_config(profile, "aws_secret_access_key",
+                       aws_creds['SecretAccessKey'])
+        self.set_aws_config(profile, "aws_session_token",
+                            aws_creds['SessionToken'])
 
 
-def calculate_expiration(aws_creds):
-    expiration = datetime.datetime.strptime(aws_creds['Expiration'],
-                                            "%Y-%m-%dT%H:%M:%SZ")
-    now = datetime.datetime.utcnow()
-    expiration_delta = expiration - now
-    # Round down to second boundary (don't include fractions of a second).
-    # This makes printing how much time is left a bit neater.
-    expiration_delta = datetime.timedelta(
-        seconds=int(expiration_delta.total_seconds()))
-    return expiration_delta
+    def calculate_expiration(self, aws_creds):
+        expiration = datetime.datetime.strptime(aws_creds['Expiration'],
+                                                "%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.datetime.utcnow()
+        expiration_delta = expiration - now
+        # Round down to second boundary (don't include fractions of a second).
+        # This makes printing how much time is left a bit neater.
+        expiration_delta = datetime.timedelta(
+            seconds=int(expiration_delta.total_seconds()))
+        return expiration_delta
+
+    def run(self):
+        creds = self.prompt_for_password(self.config)
+        while True:
+            print("Getting session from okta...", end=' ')
+            sys.stdout.flush()
+            assertion = self.get_saml_assertion(self.config, creds)
+            if not assertion:
+                print("Authentication failed")
+                sys.exit(1)
+            print("done")
+            print("Assuming AWS role...", end=' ')
+            sys.stdout.flush()
+            aws_creds = self.aws_assume_role(self.config, assertion)
+            print("done")
+            self.store_aws_creds_in_profile(self.profile, aws_creds)
+            print("Temporary credentials stored in profile", self.profile)
+            expiration_delta = self.calculate_expiration(aws_creds)
+            while expiration_delta.total_seconds() > grace_period:
+                print("\rCredentials expire in:", str(expiration_delta), end='')
+                sys.stdout.flush()
+                time.sleep(1)
+                expiration_delta = self.calculate_expiration(aws_creds)
+            print()
+            print("Renewing credentials")
 
 if __name__ == "__main__":
     try:
@@ -108,25 +186,5 @@ if __name__ == "__main__":
     except IndexError:
         profile = "default"
 
-    config = load_config(profile)
-    creds = prompt_for_password(config)
-    while True:
-        print("Logging into okta...", end=' ')
-        assertion = get_saml_assertion(config, creds)
-        if not assertion:
-            print("Authentication failed")
-            sys.exit(1)
-        print("done")
-        print("Assuming AWS role...", end=' ')
-        aws_creds = aws_assume_role(config, assertion)
-        print("done")
-        store_aws_creds_in_profile(profile, aws_creds)
-        print("Temporary credentials stored in profile", profile)
-        expiration_delta = calculate_expiration(aws_creds)
-        while expiration_delta.total_seconds() > grace_period:
-            print("\rCredentials expire in:", str(expiration_delta), end='')
-            sys.stdout.flush()
-            time.sleep(1)
-            expiration_delta = calculate_expiration(aws_creds)
-        print()
-        print("Renewing credentials")
+    oa = OktaAWS(profile)
+    oa.run()
