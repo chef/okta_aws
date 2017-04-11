@@ -24,39 +24,72 @@ class MyOktaSamlAuth(models.OktaSamlAuth):
     The changes here keep track of the session cookie you get when you
     initially auth with saml, and use that instead of re-logging in each time.
     """
-    def __init__(self, okta_url, application_type, application_id, username,
-                 password, passcode):
+    def __init__(self, okta_url, application_type, application_id):
         models.OktaSamlAuth.__init__(self, okta_url, application_type,
-                                     application_id, username, password,
-                                     passcode)
-        self.sessionCookie = None
+                                     application_id, "", "", "")
+        self.session_cookie = None
+        self.onetimetoken = None
 
-    def auth(self):
-        # If we are logging in for the first time, then we won't have a token
-        # set, nor cookies set.
-        onetimetoken = None
-        if self.sessionCookie is None:
-            onetimetoken = models.OktaAPIAuth.auth(self)
-        return self.assertion(self.saml(onetimetoken))
+    def log_into_okta(self, username):
+        self.username = username
+        print("Okta Username:", username)
+        while self.password == "":
+            self.password = getpass.getpass("Okta Password: ")
+        rv = self.preauth()
+        status = rv.get('status', None)
+        if 'errorCauses' in rv:
+            print("Authentication failed:", rv['errorSummary'])
+            print("Authentication failed: ",
+                  rv['errorCauses'][0]['errorSummary'])
+        elif status == 'SUCCESS':
+            self.onetimetoken = rv['sessionToken']
+        elif status == 'MFA_ENROLL' or status == 'MFA_ENROLL_ACTIVATE':
+            print("You need to enroll an MFA token in okta first.")
+        elif status == 'MFA_REQUIRED' or status == 'MFA_CHALLENGE':
+            print("MFA Code: ", end='')
+            mfacode = sys.stdin.readline().strip()
+            tokenids = [f for f in rv['_embedded']['factors'] if
+                       f['factorType'] == 'token:software:totp']
+            if len(tokenids) == 0:
+                print("Error: no TOTP MFA tokens configured with okta")
+                return
+            mrv = self.doauth(tokenids[0]['id'], rv['stateToken'])
+            mstatus = mrv.get('status', None)
+            if mstatus == 'SUCCESS':
+                self.onetimetoken = rv['sessionToken']
+            elif 'errorCauses' in mrv:
+                print("MFA Authentication failed: ",
+                      mrv['errorCauses'][0]['errorSummary'])
+            else:
+                print("Unknown MFA error:", mstatus)
+        else:
+            print("Unknown authentication error:", status)
+        return self.onetimetoken
 
-    def saml(self, onetimetoken):
+    def get_saml_assertion(self):
+        return self.assertion(self.saml())
+
+    def saml(self):
         url = '{base}/app/{app}/{appid}/sso/saml'.format(
             base=self.okta_url,
             app=self.application_type,
             appid=self.application_id)
 
-        if onetimetoken is not None:
+        params = {}
+        if self.onetimetoken is not None:
             # We're logging in for the first time and provided a one time
             # token
-            resp = requests.get(url=url, params={'onetimetoken': onetimetoken})
-            self.sessionCookie = resp.cookies
-        else:
-            # We already logged in before and have a session cookie
-            resp = requests.get(url=url, cookies=self.sessionCookie)
+            params['onetimetoken'] = self.onetimetoken
+            # Reset one time token so we don't reuse it
+            self.onetimetoken = None
+        resp = requests.get(url=url, params=params, cookies=self.session_cookie)
 
         if resp.status_code != 200:
             raise Exception('Received error code from server: %s' %
                             resp.status_code)
+
+        if self.session_cookie is None:
+            self.session_cookie = resp.cookies
 
         return resp.text.decode('utf8')
 
@@ -95,32 +128,6 @@ class OktaAWS(object):
             sys.exit(1)
         return config
 
-    def prompt_for_password(self, config):
-        print("Okta Username:", config['username'])
-        password = getpass.getpass("Okta Password: ")
-
-        # TODO - deal with MFA as needed
-        passcode = ""
-
-        return {
-            "password": password,
-            "passcode": passcode
-        }
-
-    def get_saml_assertion(self, config, creds):
-        # Get SAML assertion
-        if self.okta is None:
-            self.okta = MyOktaSamlAuth(config['okta_server'],
-                                       config['apptype'], config['appid'],
-                                       config['username'], creds['password'],
-                                       creds['passcode'])
-        assertion = self.okta.auth()
-
-        if not assertion:
-            print("Authentication failed")
-
-        return assertion
-
     def aws_assume_role(self, config, assertion):
         # Get credentials from aws
         output = subprocess.check_output([
@@ -156,11 +163,17 @@ class OktaAWS(object):
         return expiration_delta
 
     def run(self):
-        creds = self.prompt_for_password(self.config)
+        self.okta = MyOktaSamlAuth(self.config['okta_server'],
+                                   self.config['apptype'],
+                                   self.config['appid'])
+        rv = self.okta.log_into_okta(self.config['username'])
+        if not rv:
+            print("Error logging into okta. Exiting...")
+            sys.exit(1)
         while True:
-            print("Getting session from okta...", end=' ')
+            print("Getting SAML assertion from okta...", end=' ')
             sys.stdout.flush()
-            assertion = self.get_saml_assertion(self.config, creds)
+            assertion = self.okta.get_saml_assertion()
             if not assertion:
                 print("Authentication failed")
                 sys.exit(1)
