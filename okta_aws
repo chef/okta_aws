@@ -193,7 +193,16 @@ class OktaAWS(object):
             print()
             print("Renewing credentials")
 
+def usage():
+    print("Usage:", sys.argv[0], "[AWSPROFILE]")
+    print("Generates temporary AWS credentials for an AWS account you access")
+    print("through okta. If you don't specify a profile name, then the")
+    print("profile 'default' is used.")
+    sys.exit(0)
+
 if __name__ == "__main__":
+    if '--help' in sys.argv:
+        usage()
     try:
         profile = sys.argv[1]
     except IndexError:
