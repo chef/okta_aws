@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='okta_aws',
-    version='0.1.0',
+    version='0.1.1',
     description='Use the AWS API via an account using Okta',
     author='Mark Harrison',
     scripts=['okta_aws'],
