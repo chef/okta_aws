@@ -17,6 +17,10 @@ Clone this repository then run:
 
     python setup.py install
 
+If you have homebrew, you can use it to install okta_aws:
+
+    brew install https://raw.githubusercontent.com/chef/okta_aws/master/Formula/okta_aws.rb
+
 ## Setup
 
 Make a file in your home directory called `.okta_aws.toml`:
