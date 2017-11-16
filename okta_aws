@@ -145,11 +145,17 @@ class OktaAWS(object):
 
     def aws_assume_role(self, config, assertion):
         # Get credentials from aws
-        output = subprocess.check_output([
-            "aws", "sts", "assume-role-with-saml",
-            "--role-arn", config['role_arn'],
-            "--principal-arn", config['principal_arn'],
-            "--saml-assertion", base64.b64encode(assertion)])
+        try:
+            output = subprocess.check_output([
+                "aws", "sts", "assume-role-with-saml",
+                "--role-arn", config['role_arn'],
+                "--principal-arn", config['principal_arn'],
+                "--saml-assertion", base64.b64encode(assertion)])
+        except OSError, e:
+            if e.errno == 2:
+                print("The AWS CLI cannot be found, see: http://docs.aws.amazon.com/cli/latest/userguide/installing.html")
+                sys.exit(1)
+            raise
         aws_creds = json.loads(output)
         return aws_creds['Credentials']
 
