@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2017 Chef Software
 #
@@ -14,99 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import base64
 import datetime
 import getpass
 import json
+import html
 import os
+import re
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 import requests
 import toml
-from oktaauth import models
 
 # Renew credentials early
 grace_period = 600
-
-class MyOktaSamlAuth(models.OktaSamlAuth):
-    """
-    The original oktaauth library doesn't deal with getting a new SAML session
-    without re-logging into okta, and so we need to override a few things.
-    The changes here keep track of the session cookie you get when you
-    initially auth with saml, and use that instead of re-logging in each time.
-    """
-    def __init__(self, okta_url, application_type, application_id):
-        models.OktaSamlAuth.__init__(self, okta_url, application_type,
-                                     application_id, "", "", "")
-        self.session_cookie = None
-        self.onetimetoken = None
-
-    def log_into_okta(self, username):
-        self.username = username
-        print("Okta Username:", username)
-        while self.password == "":
-            self.password = getpass.getpass("Okta Password: ")
-        rv = self.preauth()
-        status = rv.get('status', None)
-        if 'errorCauses' in rv:
-            print("Authentication failed:", rv['errorSummary'])
-            print("Authentication failed: ",
-                  rv['errorCauses'][0]['errorSummary'])
-        elif status == 'SUCCESS':
-            self.onetimetoken = rv['sessionToken']
-        elif status == 'MFA_ENROLL' or status == 'MFA_ENROLL_ACTIVATE':
-            print("You need to enroll an MFA token in okta first.")
-        elif status == 'MFA_REQUIRED' or status == 'MFA_CHALLENGE':
-            print("MFA Code: ", end='')
-            mfacode = sys.stdin.readline().strip()
-            tokenids = [f for f in rv['_embedded']['factors'] if
-                       f['factorType'] == 'token:software:totp']
-            if len(tokenids) == 0:
-                print("Error: no TOTP MFA tokens configured with okta")
-                return
-            mrv = self.doauth(tokenids[0]['id'], rv['stateToken'])
-            mstatus = mrv.get('status', None)
-            if mstatus == 'SUCCESS':
-                self.onetimetoken = rv['sessionToken']
-            elif 'errorCauses' in mrv:
-                print("MFA Authentication failed: ",
-                      mrv['errorCauses'][0]['errorSummary'])
-            else:
-                print("Unknown MFA error:", mstatus)
-        else:
-            print("Unknown authentication error:", status)
-        return self.onetimetoken
-
-    def get_saml_assertion(self):
-        return self.assertion(self.saml())
-
-    def saml(self):
-        url = '{base}/app/{app}/{appid}/sso/saml'.format(
-            base=self.okta_url,
-            app=self.application_type,
-            appid=self.application_id)
-
-        params = {}
-        if self.onetimetoken is not None:
-            # We're logging in for the first time and provided a one time
-            # token
-            params['onetimetoken'] = self.onetimetoken
-            # Reset one time token so we don't reuse it
-            self.onetimetoken = None
-        resp = requests.get(url=url, params=params, cookies=self.session_cookie)
-
-        if resp.status_code != 200:
-            raise Exception('Received error code from server: %s' %
-                            resp.status_code)
-
-        if self.session_cookie is None:
-            self.session_cookie = resp.cookies
-
-        return resp.text.decode('utf8')
 
 class OktaAWS(object):
     def __init__(self, profile):
@@ -143,15 +67,40 @@ class OktaAWS(object):
             sys.exit(1)
         return config
 
-    def aws_assume_role(self, config, assertion):
+    def get_arns(self, saml_assertion):
+        parsed = ET.fromstring(base64.b64decode(saml_assertion))
+        # Horrible xpath expression to dig into the ARNs
+        elems = parsed.findall(".//{urn:oasis:names:tc:SAML:2.0:assertion}Attribute[@Name='https://aws.amazon.com/SAML/Attributes/Role']//*")
+        # text contains Principal ARN, Role ARN separated by a comma
+        roles = [e.text.split(",", 1) for e in elems]
+        if len(roles) > 1:
+            # We have multiple possible roles, ask the user to select one
+            print("Available roles")
+            for idx, role in enumerate(roles):
+                print ("%2d) %s" % (idx + 1, roles[idx][1].split('/')[-1]))
+            response = 0
+            while response < 1 or response > len(roles):
+                try:
+                    response = int(input("Select role to log in with: "))
+                except ValueError:
+                    # If we enter something invalid, just go through the loop
+                    # again.
+                    pass
+            selected = roles[response - 1]
+        else:
+            selected = roles[0]
+        # Returns principal_arn, role_arn
+        return selected
+
+    def aws_assume_role(self, principal_arn, role_arn, assertion):
         # Get credentials from aws
         try:
             output = subprocess.check_output([
-                "aws", "--output", "json", "sts", "assume-role-with-saml",
-                "--role-arn", config['role_arn'],
-                "--principal-arn", config['principal_arn'],
-                "--saml-assertion", base64.b64encode(assertion)])
-        except OSError, e:
+                "aws", "sts", "assume-role-with-saml",
+                "--role-arn", role_arn,
+                "--principal-arn", principal_arn,
+                "--saml-assertion", assertion])
+        except OSError as e:
             if e.errno == 2:
                 print("The AWS CLI cannot be found, see: http://docs.aws.amazon.com/cli/latest/userguide/installing.html")
                 sys.exit(1)
@@ -184,35 +133,43 @@ class OktaAWS(object):
         return expiration_delta
 
     def run(self):
-        self.okta = MyOktaSamlAuth(self.config['okta_server'],
-                                   self.config['apptype'],
-                                   self.config['appid'])
-        rv = self.okta.log_into_okta(self.config['username'])
-        if not rv:
+        print("Okta Username:", self.config['username'])
+        password = ""
+        while password == "":
+            password = getpass.getpass("Okta Password: ")
+        r1 = requests.post(
+            "https://%s/api/v1/authn" % self.config['okta_server'],
+            json={"username": self.config['username'], "password": password})
+        if r1.status_code != 200:
             print("Error logging into okta. Exiting...")
+            print("Output: " % r1.text)
             sys.exit(1)
-        while True:
-            print("Getting SAML assertion from okta...", end=' ')
-            sys.stdout.flush()
-            assertion = self.okta.get_saml_assertion()
-            if not assertion:
-                print("Authentication failed")
-                sys.exit(1)
-            print("done")
-            print("Assuming AWS role...", end=' ')
-            sys.stdout.flush()
-            aws_creds = self.aws_assume_role(self.config, assertion)
-            print("done")
-            self.store_aws_creds_in_profile(self.profile, aws_creds)
-            print("Temporary credentials stored in profile", self.profile)
-            expiration_delta = self.calculate_expiration(aws_creds)
-            while expiration_delta.total_seconds() > grace_period:
-                print("\rCredentials expire in:", str(expiration_delta), end='')
-                sys.stdout.flush()
-                time.sleep(1)
-                expiration_delta = self.calculate_expiration(aws_creds)
-            print()
-            print("Renewing credentials")
+
+        print("Getting SAML assertion from okta...")
+        sys.stdout.flush()
+        r2 = requests.post("%s?onetimetoken=%s" % (
+            self.config['embed_url'], r1.json()['sessionToken']))
+        if r2.status_code != 200:
+            print("Error getting saml assertion. HTML response %s" %
+                  r2.status_code)
+            sys.exit(1)
+        match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
+                          r2.text)
+        if not match:
+            print("Authentication failed")
+            print(r2.text)
+            sys.exit(1)
+
+        saml_assertion = html.unescape(match.group(1))
+
+        principal_arn, role_arn = self.get_arns(saml_assertion)
+
+        print("Assuming AWS role %s..." % role_arn.split("/")[-1])
+        aws_creds = self.aws_assume_role(principal_arn, role_arn,
+                                         saml_assertion)
+        self.store_aws_creds_in_profile(self.profile, aws_creds)
+        print("Temporary credentials stored in profile", self.profile)
+        print("Credentials expire in 1 hour")
 
 def usage():
     print("Usage:", sys.argv[0], "[AWSPROFILE]")
