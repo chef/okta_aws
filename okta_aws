@@ -169,7 +169,7 @@ if __name__ == "__main__":
     try:
         profile = sys.argv[1]
     except IndexError:
-        profile = "default"
+        profile = os.getenv("AWS_PROFILE") or "default"
 
     oa = OktaAWS(profile)
     oa.run()
