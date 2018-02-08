@@ -54,10 +54,7 @@ class OktaAWS(object):
         required_config_options = [
             'username',
             'okta_server',
-            'apptype',
-            'appid',
-            'principal_arn',
-            'role_arn'
+            'embed_url'
         ]
 
         missing_options = [k for k in required_config_options if k not in config]
@@ -119,18 +116,6 @@ class OktaAWS(object):
                        aws_creds['SecretAccessKey'])
         self.set_aws_config(profile, "aws_session_token",
                             aws_creds['SessionToken'])
-
-
-    def calculate_expiration(self, aws_creds):
-        expiration = datetime.datetime.strptime(aws_creds['Expiration'],
-                                                "%Y-%m-%dT%H:%M:%SZ")
-        now = datetime.datetime.utcnow()
-        expiration_delta = expiration - now
-        # Round down to second boundary (don't include fractions of a second).
-        # This makes printing how much time is left a bit neater.
-        expiration_delta = datetime.timedelta(
-            seconds=int(expiration_delta.total_seconds()))
-        return expiration_delta
 
     def run(self):
         print("Okta Username:", self.config['username'])
