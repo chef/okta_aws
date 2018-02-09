@@ -146,13 +146,13 @@ class OktaAWS(object):
         if r.status_code != 200:
             logging.error("Error getting saml assertion. HTML response %s" %
                           r.status_code)
-            sys.exit(1)
+            return None
         match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
                           r.text)
         if not match:
             logging.error("Authentication failed")
             logging.debug(r.text)
-            sys.exit(1)
+            return None
 
         return html.unescape(match.group(1))
 
@@ -162,12 +162,17 @@ class OktaAWS(object):
         while password == "":
             password = getpass.getpass("Okta Password: ")
         sys.stdout.flush()
+
         onetimetoken = self.log_in_to_okta(password)
         if onetimetoken is None:
             logging.error("Error logging into okta.")
             sys.exit(1)
 
         saml_assertion = self.get_saml_assertion(onetimetoken)
+        if saml_assertion is None:
+            # Errors are logged from the get_saml_assertion method
+            sys.exit(1)
+
         principal_arn, role_arn = self.get_arns(saml_assertion)
 
         logging.info("Assuming AWS role %s..." % role_arn.split("/")[-1])
