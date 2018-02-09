@@ -122,36 +122,44 @@ class OktaAWS(object):
         self.set_aws_config(profile, "aws_session_token",
                             aws_creds['SessionToken'])
 
+    def log_in_to_okta(self, password):
+        r = requests.post(
+            "https://%s/api/v1/authn" % self.config['okta_server'],
+            json={"username": self.config['username'], "password": password})
+        if r.status_code != 200:
+            self.debug(r.text)
+            return None
+        return r.json()['sessionToken']
+
+    def get_saml_assertion(self, onetimetoken):
+        r = requests.post("%s?onetimetoken=%s" % (
+            self.config['embed_url'], onetimetoken))
+        if r.status_code != 200:
+            print("Error getting saml assertion. HTML response %s" %
+                  r.status_code)
+            sys.exit(1)
+        match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
+                          r.text)
+        if not match:
+            print("Authentication failed")
+            print(r.text)
+            sys.exit(1)
+
+        return html.unescape(match.group(1))
+
     def run(self):
         print("Okta Username:", self.config['username'])
         password = ""
         while password == "":
             password = getpass.getpass("Okta Password: ")
-        r1 = requests.post(
-            "https://%s/api/v1/authn" % self.config['okta_server'],
-            json={"username": self.config['username'], "password": password})
-        if r1.status_code != 200:
-            print("Error logging into okta. Exiting...")
-            print("Output: " % r1.text)
-            sys.exit(1)
-
         print("Getting SAML assertion from okta...")
         sys.stdout.flush()
-        r2 = requests.post("%s?onetimetoken=%s" % (
-            self.config['embed_url'], r1.json()['sessionToken']))
-        if r2.status_code != 200:
-            print("Error getting saml assertion. HTML response %s" %
-                  r2.status_code)
-            sys.exit(1)
-        match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
-                          r2.text)
-        if not match:
-            print("Authentication failed")
-            print(r2.text)
+        onetimetoken = self.log_in_to_okta(password)
+        if onetimetoken is None:
+            print("Error logging into okta. Exiting...")
             sys.exit(1)
 
-        saml_assertion = html.unescape(match.group(1))
-
+        saml_assertion = self.get_saml_assertion(onetimetoken)
         principal_arn, role_arn = self.get_arns(saml_assertion)
 
         print("Assuming AWS role %s..." % role_arn.split("/")[-1])
