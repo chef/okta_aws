@@ -190,4 +190,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     oa = OktaAWS(args)
-    oa.run()
+    try:
+        oa.run()
+    except KeyboardInterrupt:
+        print("Exiting...")
