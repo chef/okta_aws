@@ -15,7 +15,6 @@
 # limitations under the License.
 
 import base64
-import datetime
 import getpass
 import json
 import html
@@ -23,7 +22,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 import xml.etree.ElementTree as ET
 
 import requests
@@ -31,6 +29,7 @@ import toml
 
 # Renew credentials early
 grace_period = 600
+
 
 class OktaAWS(object):
     def __init__(self, profile):
@@ -57,7 +56,8 @@ class OktaAWS(object):
             'embed_url'
         ]
 
-        missing_options = [k for k in required_config_options if k not in config]
+        missing_options = [k for k in required_config_options
+                           if k not in config]
         if missing_options:
             print("Missing required configuration settings: %s" %
                   ', '.join(missing_options))
@@ -67,14 +67,16 @@ class OktaAWS(object):
     def get_arns(self, saml_assertion):
         parsed = ET.fromstring(base64.b64decode(saml_assertion))
         # Horrible xpath expression to dig into the ARNs
-        elems = parsed.findall(".//{urn:oasis:names:tc:SAML:2.0:assertion}Attribute[@Name='https://aws.amazon.com/SAML/Attributes/Role']//*")
+        elems = parsed.findall(
+            ".//{urn:oasis:names:tc:SAML:2.0:assertion}Attribute["
+            "@Name='https://aws.amazon.com/SAML/Attributes/Role']//*")
         # text contains Principal ARN, Role ARN separated by a comma
         roles = [e.text.split(",", 1) for e in elems]
         if len(roles) > 1:
             # We have multiple possible roles, ask the user to select one
             print("Available roles")
             for idx, role in enumerate(roles):
-                print ("%2d) %s" % (idx + 1, roles[idx][1].split('/')[-1]))
+                print("%2d) %s" % (idx + 1, roles[idx][1].split('/')[-1]))
             response = 0
             while response < 1 or response > len(roles):
                 try:
@@ -116,7 +118,7 @@ class OktaAWS(object):
         self.set_aws_config(profile, "aws_access_key_id",
                             aws_creds['AccessKeyId'])
         self.set_aws_config(profile, "aws_secret_access_key",
-                       aws_creds['SecretAccessKey'])
+                            aws_creds['SecretAccessKey'])
         self.set_aws_config(profile, "aws_session_token",
                             aws_creds['SessionToken'])
 
@@ -159,12 +161,14 @@ class OktaAWS(object):
         print("Temporary credentials stored in profile", self.profile)
         print("Credentials expire in 1 hour")
 
+
 def usage():
     print("Usage:", sys.argv[0], "[AWSPROFILE]")
     print("Generates temporary AWS credentials for an AWS account you access")
     print("through okta. If you don't specify a profile name, then the")
     print("profile 'default' is used.")
     sys.exit(0)
+
 
 if __name__ == "__main__":
     if '--help' in sys.argv:
