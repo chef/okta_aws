@@ -99,7 +99,10 @@ class OktaAWS(object):
                 "--saml-assertion", assertion])
         except OSError as e:
             if e.errno == 2:
-                print("The AWS CLI cannot be found, see: http://docs.aws.amazon.com/cli/latest/userguide/installing.html")
+                print("The AWS CLI cannot be found, see: http://docs.aws"
+                      ".amazon.com/cli/latest/userguide/installing.html")
+                print("If you are on a mac with homebrew, run "
+                      "`brew install awscli`")
                 sys.exit(1)
             raise
         aws_creds = json.loads(output)
