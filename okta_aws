@@ -96,6 +96,8 @@ class OktaAWS(object):
         else:
             selected = roles[0]
         # Returns principal_arn, role_arn
+        logging.debug("Principal ARN: %s" % selected[0])
+        logging.debug("Role ARN: %s" % selected[1])
         return selected
 
     def aws_assume_role(self, principal_arn, role_arn, assertion):
