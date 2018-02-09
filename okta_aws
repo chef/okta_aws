@@ -14,10 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import base64
 import getpass
 import json
 import html
+import logging
 import os
 import re
 import subprocess
@@ -32,10 +34,15 @@ grace_period = 600
 
 
 class OktaAWS(object):
-    def __init__(self, profile):
-        self.profile = profile
-        self.config = self.load_config(profile)
-        self.okta = None
+    def __init__(self, args):
+        self.args = args
+        if self.args.debug:
+            logging.basicConfig(
+                format='%(asctime)s %(levelname)s %(message)s',
+                level=logging.DEBUG)
+        else:
+            logging.basicConfig(format='%(message)s', level=logging.INFO)
+        self.config = self.load_config(self.args.profile)
 
     def load_config(self, profile):
         fh = open(os.path.expanduser("~/.okta_aws.toml"))
@@ -47,7 +54,7 @@ class OktaAWS(object):
         try:
             config = dict(toml_config['general'], **toml_config[profile])
         except KeyError:
-            print("Unable to find profile %s in config file" % profile)
+            logging.error("Unable to find profile %s in config file" % profile)
             sys.exit(1)
 
         required_config_options = [
@@ -59,8 +66,8 @@ class OktaAWS(object):
         missing_options = [k for k in required_config_options
                            if k not in config]
         if missing_options:
-            print("Missing required configuration settings: %s" %
-                  ', '.join(missing_options))
+            logging.error("Missing required configuration settings: %s" %
+                          ', '.join(missing_options))
             sys.exit(1)
         return config
 
@@ -101,10 +108,11 @@ class OktaAWS(object):
                 "--saml-assertion", assertion])
         except OSError as e:
             if e.errno == 2:
-                print("The AWS CLI cannot be found, see: http://docs.aws"
-                      ".amazon.com/cli/latest/userguide/installing.html")
-                print("If you are on a mac with homebrew, run "
-                      "`brew install awscli`")
+                logging.error(
+                    "The AWS CLI cannot be found, see: http://docs.aws"
+                    ".amazon.com/cli/latest/userguide/installing.html")
+                logging.error("If you are on a mac with homebrew, run "
+                              "`brew install awscli`")
                 sys.exit(1)
             raise
         aws_creds = json.loads(output)
@@ -127,22 +135,23 @@ class OktaAWS(object):
             "https://%s/api/v1/authn" % self.config['okta_server'],
             json={"username": self.config['username'], "password": password})
         if r.status_code != 200:
-            self.debug(r.text)
+            logging.debug(r.text)
             return None
         return r.json()['sessionToken']
 
     def get_saml_assertion(self, onetimetoken):
+        logging.debug("Getting SAML Assertion from okta")
         r = requests.post("%s?onetimetoken=%s" % (
             self.config['embed_url'], onetimetoken))
         if r.status_code != 200:
-            print("Error getting saml assertion. HTML response %s" %
-                  r.status_code)
+            logging.error("Error getting saml assertion. HTML response %s" %
+                          r.status_code)
             sys.exit(1)
         match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
                           r.text)
         if not match:
-            print("Authentication failed")
-            print(r.text)
+            logging.error("Authentication failed")
+            logging.debug(r.text)
             sys.exit(1)
 
         return html.unescape(match.group(1))
@@ -152,39 +161,33 @@ class OktaAWS(object):
         password = ""
         while password == "":
             password = getpass.getpass("Okta Password: ")
-        print("Getting SAML assertion from okta...")
         sys.stdout.flush()
         onetimetoken = self.log_in_to_okta(password)
         if onetimetoken is None:
-            print("Error logging into okta. Exiting...")
+            logging.error("Error logging into okta.")
             sys.exit(1)
 
         saml_assertion = self.get_saml_assertion(onetimetoken)
         principal_arn, role_arn = self.get_arns(saml_assertion)
 
-        print("Assuming AWS role %s..." % role_arn.split("/")[-1])
+        logging.info("Assuming AWS role %s..." % role_arn.split("/")[-1])
         aws_creds = self.aws_assume_role(principal_arn, role_arn,
                                          saml_assertion)
-        self.store_aws_creds_in_profile(self.profile, aws_creds)
-        print("Temporary credentials stored in profile", self.profile)
-        print("Credentials expire in 1 hour")
-
-
-def usage():
-    print("Usage:", sys.argv[0], "[AWSPROFILE]")
-    print("Generates temporary AWS credentials for an AWS account you access")
-    print("through okta. If you don't specify a profile name, then the")
-    print("profile 'default' is used.")
-    sys.exit(0)
+        self.store_aws_creds_in_profile(self.args.profile, aws_creds)
+        logging.info("Temporary credentials stored in profile %s" %
+                     self.args.profile)
+        logging.info("Credentials expire in 1 hour")
 
 
 if __name__ == "__main__":
-    if '--help' in sys.argv:
-        usage()
-    try:
-        profile = sys.argv[1]
-    except IndexError:
-        profile = os.getenv("AWS_PROFILE") or "default"
+    parser = argparse.ArgumentParser(
+        description='Generates temporary AWS credentials for an AWS account'
+        'you access through okta.')
+    parser.add_argument('profile', nargs='?',
+                        default=os.getenv("AWS_PROFILE") or "default",
+                        help='The AWS profile you want credentials for')
+    parser.add_argument('--debug', '-d', action='store_true')
+    args = parser.parse_args()
 
-    oa = OktaAWS(profile)
+    oa = OktaAWS(args)
     oa.run()
