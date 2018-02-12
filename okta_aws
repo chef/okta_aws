@@ -19,6 +19,7 @@ import base64
 import getpass
 import json
 import html
+import http
 import logging
 import os
 import re
@@ -42,10 +43,10 @@ class OktaAWS(object):
                 level=logging.DEBUG)
         else:
             logging.basicConfig(format='%(message)s', level=logging.INFO)
-        self.config = self.load_config(self.args.profile)
+        self.config = self.load_config(args.config_file, args.profile)
 
-    def load_config(self, profile):
-        fh = open(os.path.expanduser("~/.okta_aws.toml"))
+    def load_config(self, config_file, profile):
+        fh = open(os.path.expanduser(config_file))
         toml_config = toml.loads(fh.read())
         fh.close()
 
@@ -69,6 +70,10 @@ class OktaAWS(object):
             logging.error("Missing required configuration settings: %s" %
                           ', '.join(missing_options))
             sys.exit(1)
+
+        # Default configuration values
+        config.setdefault('cookie_file', '~/.okta_aws_cookie')
+
         return config
 
     def get_arns(self, saml_assertion):
@@ -141,39 +146,57 @@ class OktaAWS(object):
             return None
         return r.json()['sessionToken']
 
-    def get_saml_assertion(self, onetimetoken):
-        logging.debug("Getting SAML Assertion from okta")
-        r = requests.post("%s?onetimetoken=%s" % (
-            self.config['embed_url'], onetimetoken))
+    def get_saml_assertion(self, sessiontoken=None):
+        cookie_path = os.path.expanduser(self.config['cookie_path'])
+        s = requests.Session()
+        # Use a cookiejar implementation that we can save to a file with
+        s.cookies = http.cookiejar.LWPCookieJar(cookie_path)
+        if os.path.exists(cookie_path):
+            s.cookies.load(ignore_discard=True)
+
+        logging.debug(s.cookies)
+
+        if sessiontoken is not None:
+            r = s.post("%s?sessionToken=%s" % (
+                self.config['embed_url'], sessiontoken))
+        else:
+            r = s.post(self.config['embed_url'])
+
         if r.status_code != 200:
             logging.error("Error getting saml assertion. HTML response %s" %
                           r.status_code)
             return None
+
         match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
                           r.text)
+
         if not match:
-            logging.error("Authentication failed")
-            logging.debug(r.text)
             return None
 
+        s.cookies.save(ignore_discard=True)
         return html.unescape(match.group(1))
 
     def run(self):
-        print("Okta Username:", self.config['username'])
-        password = ""
-        while password == "":
-            password = getpass.getpass("Okta Password: ")
-        sys.stdout.flush()
-
-        onetimetoken = self.log_in_to_okta(password)
-        if onetimetoken is None:
-            logging.error("Error logging into okta.")
-            sys.exit(1)
-
-        saml_assertion = self.get_saml_assertion(onetimetoken)
+        # Try to get the saml assertion with save cookies first
+        logging.debug("Trying to get SAML assertion with pre-existing session")
+        saml_assertion = self.get_saml_assertion()
+        # If it fails, then get the username and re-get the saml assertion
         if saml_assertion is None:
-            # Errors are logged from the get_saml_assertion method
-            sys.exit(1)
+            print("Okta Username:", self.config['username'])
+            password = ""
+            while password == "":
+                password = getpass.getpass("Okta Password: ")
+            sys.stdout.flush()
+
+            onetimetoken = self.log_in_to_okta(password)
+            if onetimetoken is None:
+                logging.error("Error logging into okta.")
+                sys.exit(1)
+
+            saml_assertion = self.get_saml_assertion(onetimetoken)
+            if saml_assertion is None:
+                logging.error("Problem getting SAML assertion")
+                sys.exit(1)
 
         principal_arn, role_arn = self.get_arns(saml_assertion)
 
@@ -194,6 +217,8 @@ if __name__ == "__main__":
                         default=os.getenv("AWS_PROFILE") or "default",
                         help='The AWS profile you want credentials for')
     parser.add_argument('--debug', '-d', action='store_true')
+    parser.add_argumnet('--config', '-c', default='~/.okta_aws.toml',
+                        help='Path to the configuration file')
     args = parser.parse_args()
 
     oa = OktaAWS(args)
