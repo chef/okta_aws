@@ -27,20 +27,15 @@ Make a file in your home directory called `.okta_aws.toml`:
 
     [general]
     username="yourusername"
-    okta_server="yourcompany.okta.com"
-    apptype="amazon_aws"
 
     [profilename]
-    appid="..."
-    prinicpal_arn="arn:aws:iam::1234567890:saml-provider/OKTA"
-    role_arn="aws:aws:iam::1234567890:role/Okta_User"
+    embed_url="https://yourcompanyname.okta.com/home/amazon_aws/..."
+    #role_arn="aws:aws:iam::1234567890:role/Okta_User"
+    #role_arn="Okta_User"
 
 The values are as follows:
 
 * `username`: your okta username
-* `okta_server`: The domain name you use to log into okta. It's normally
-  `yourcompanyname.okta.com`.
-* `apptype`: This should normally be set to `amazon_aws`
 
 Then there is a section for each AWS profile you wish to use. This lets you
 log into multiple AWS accounts from the same okta account. The name of this
@@ -50,19 +45,13 @@ cli tools).
 
 Within each profile there are several settings:
 
-* `appid` - this is the app ID used by okta. Finding this out isn't
-  straightforward, but you can get it by going into the application settings
-  in the admin interface in okta, and looking for the 'Identity Provider
-  metadata' link in the 'Sign On' section. The URL will look something like:
-  `https://chef.okta.com/app/SOMERANDOMID/sso/saml/metadata`. The random ID in
-  this URL is your appid.
-* `principal_arn`: This is the ARN of the saml integration you set up in AWS.
-  It can also be found from the 'Sign on' page of the application settings
-  in okta.  Look for the 'Identify provider ARN' setting.
-* `role_arn`: This is the ARN of the role you are assigned when you log into
-  AWS via okta. It can be found in the IAM console when you log in, by going
-  to the roles section and finding the role that you are logged in as (shown
-  at the top right of the screen on the AWS console).
+* `embed_url` - this is App Embed Link you can find in the "General" tab when
+  looking at the application inside the okta admin console.
+* `role_arn`: This setting contains the role to assume when you log into
+  AWS via okta. You only need to provide this if you are assigned more than
+  one role in okta, and you don't want to be prompted for which role to assume
+  each time. You can provide either a full ARN here, or just the name of the
+  role itself.
 
 Note: If you have been instructed to download this tool, then these settings
 may have been provided to you already.
