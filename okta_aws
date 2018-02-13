@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
 import requests
@@ -60,7 +61,6 @@ class OktaAWS(object):
 
         required_config_options = [
             'username',
-            'okta_server',
             'embed_url'
         ]
 
@@ -156,8 +156,9 @@ class OktaAWS(object):
                             aws_creds['SessionToken'])
 
     def log_in_to_okta(self, password):
+        embed_url = urlparse(self.config['embed_url'])
         r = requests.post(
-            "https://%s/api/v1/authn" % self.config['okta_server'],
+            "https://%s/api/v1/authn" % embed_url.netloc,
             json={"username": self.config['username'], "password": password})
         if r.status_code != 200:
             logging.debug(r.text)
