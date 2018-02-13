@@ -43,7 +43,7 @@ class OktaAWS(object):
                 level=logging.DEBUG)
         else:
             logging.basicConfig(format='%(message)s', level=logging.INFO)
-        self.config = self.load_config(args.config_file, args.profile)
+        self.config = self.load_config(args.config, args.profile)
 
     def load_config(self, config_file, profile):
         fh = open(os.path.expanduser(config_file))
@@ -147,7 +147,7 @@ class OktaAWS(object):
         return r.json()['sessionToken']
 
     def get_saml_assertion(self, sessiontoken=None):
-        cookie_path = os.path.expanduser(self.config['cookie_path'])
+        cookie_path = os.path.expanduser(self.config['cookie_file'])
         s = requests.Session()
         # Use a cookiejar implementation that we can save to a file with
         s.cookies = http.cookiejar.LWPCookieJar(cookie_path)
@@ -217,7 +217,7 @@ if __name__ == "__main__":
                         default=os.getenv("AWS_PROFILE") or "default",
                         help='The AWS profile you want credentials for')
     parser.add_argument('--debug', '-d', action='store_true')
-    parser.add_argumnet('--config', '-c', default='~/.okta_aws.toml',
+    parser.add_argument('--config', '-c', default='~/.okta_aws.toml',
                         help='Path to the configuration file')
     args = parser.parse_args()
 
