@@ -76,6 +76,39 @@ class OktaAWS(object):
 
         return config
 
+    def select_role(self, arns):
+        # ARNS is a list of principal ARN, role ARN pairs.
+        selected = None
+        if len(arns) > 1:
+            if 'role_arn' in self.config:
+                # First check to see if we configured a default role
+                logging.debug("Looking for configured role: %s" %
+                              self.config['role_arn'])
+                for arn in arns:
+                    # Use endswith here so we can provide just a role name
+                    # instead of the full ARN.
+                    if arn[1].endswith(self.config['role_arn']):
+                        selected = arn
+            if selected is None:
+                # We either didn't configure a default role or the configured
+                # default role didn't match any available roles. Ask the user
+                # to pick one.
+                print("Available roles")
+                for idx, role in enumerate(arns):
+                    print("%2d) %s" % (idx + 1, arns[idx][1].split('/')[-1]))
+                response = 0
+                while response < 1 or response > len(arns):
+                    try:
+                        response = int(input("Select role to log in with: "))
+                    except ValueError:
+                        # If we enter something invalid, just go through the
+                        # loop again.
+                        pass
+                selected = arns[response - 1]
+        else:
+            selected = arns[0]
+        return selected
+
     def get_arns(self, saml_assertion):
         parsed = ET.fromstring(base64.b64decode(saml_assertion))
         # Horrible xpath expression to dig into the ARNs
@@ -83,23 +116,8 @@ class OktaAWS(object):
             ".//{urn:oasis:names:tc:SAML:2.0:assertion}Attribute["
             "@Name='https://aws.amazon.com/SAML/Attributes/Role']//*")
         # text contains Principal ARN, Role ARN separated by a comma
-        roles = [e.text.split(",", 1) for e in elems]
-        if len(roles) > 1:
-            # We have multiple possible roles, ask the user to select one
-            print("Available roles")
-            for idx, role in enumerate(roles):
-                print("%2d) %s" % (idx + 1, roles[idx][1].split('/')[-1]))
-            response = 0
-            while response < 1 or response > len(roles):
-                try:
-                    response = int(input("Select role to log in with: "))
-                except ValueError:
-                    # If we enter something invalid, just go through the loop
-                    # again.
-                    pass
-            selected = roles[response - 1]
-        else:
-            selected = roles[0]
+        arns = [e.text.split(",", 1) for e in elems]
+        selected = self.select_role(arns)
         # Returns principal_arn, role_arn
         logging.debug("Principal ARN: %s" % selected[0])
         logging.debug("Role ARN: %s" % selected[1])
