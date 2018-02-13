@@ -7,9 +7,7 @@ don't have any API keys you can use to access the AWS API via the command
 line.
 
 This tool will prompt you for your Okta credentials, and generate temporary
-API keys you can use to access the AWS API with. It will also continue to
-renew those credentials before they expire (the temporary credentials normally
-only last for an hour) while it is running.
+API keys you can use to access the AWS API with.
 
 ## Installation
 
@@ -55,3 +53,37 @@ Within each profile there are several settings:
 
 Note: If you have been instructed to download this tool, then these settings
 may have been provided to you already.
+
+## Usage
+
+Run `okta_aws PROFILENAME`, or run `okta_aws` without any arguments and
+okta_aws will you the `AWS_PROFILE` environment variable if you have it set.
+
+The first time you run `okta_aws`, you will be prompted for your okta username
+and password. On subsequent runs, if you are still logged into okta and your
+session hasn't expired, then you won't have to log in again.
+
+Once you have entered your okta username and password, a temporary token will
+be obtained for you and stored in your AWS credentials file. You can then use
+the aws api as normal, passing in the profile name you gave to okta_aws.
+
+If you have been assigned multiple possible roles when the aws account was set
+up for you in okta, then you will be prompted which one of them you want to
+use (e.g. Okta_PowerUser or Okta_AdminAccess). Select which one you want from
+the menu if prompted. You can also configure a default role to assume in
+`~/.okta_aws.toml`.
+
+The AWS token you receive will only last for an hour. To get a new token,
+re-run okta_aws.
+
+### Automatically refreshing the token
+
+You can run okta_aws a second time to retrieve a new token before the old one
+expires. If you wish, you can run the following to automatically refresh the
+token once every 55 minutes (allowing some grace period before the token
+expires):
+
+    while true; do okta_aws PROFILENAME; sleep 3300; done
+
+okta_aws will run without prompting for anything one you have logged in and,
+if necessary, configured a default profile in `~/.okta_aws.toml`.
