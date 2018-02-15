@@ -38,13 +38,18 @@ grace_period = 600
 class OktaAWS(object):
     def __init__(self, args):
         self.args = args
+        self.setup_logging()
+        self.config = self.load_config(args.config, args.profile)
+
+    def setup_logging(self):
         if self.args.debug:
             logging.basicConfig(
                 format='%(asctime)s %(levelname)s %(message)s',
                 level=logging.DEBUG)
+        elif self.args.quiet:
+            logging.basicConfig(format='%(message)s', level=logging.ERROR)
         else:
             logging.basicConfig(format='%(message)s', level=logging.INFO)
-        self.config = self.load_config(args.config, args.profile)
 
     def load_config(self, config_file, profile):
         fh = open(os.path.expanduser(config_file))
@@ -235,9 +240,12 @@ if __name__ == "__main__":
     parser.add_argument('profile', nargs='?',
                         default=os.getenv("AWS_PROFILE") or "default",
                         help='The AWS profile you want credentials for')
-    parser.add_argument('--debug', '-d', action='store_true')
     parser.add_argument('--config', '-c', default='~/.okta_aws.toml',
                         help='Path to the configuration file')
+    parser.add_argument('--debug', '-d', action='store_true',
+                        help='Show debug output')
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help='Only show error messages')
     args = parser.parse_args()
 
     oa = OktaAWS(args)
