@@ -31,9 +31,6 @@ import xml.etree.ElementTree as ET
 import requests
 import toml
 
-# Renew credentials early
-grace_period = 600
-
 
 class OktaAWS(object):
     def __init__(self, args):
