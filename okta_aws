@@ -174,11 +174,12 @@ class OktaAWS(object):
         cookie_path = os.path.expanduser(self.config['cookie_file'])
         s = requests.Session()
         # Use a cookiejar implementation that we can save to a file with
-        s.cookies = http.cookiejar.LWPCookieJar(cookie_path)
-        if os.path.exists(cookie_path):
-            s.cookies.load(ignore_discard=True)
-
-        logging.debug(s.cookies)
+        if not self.args.no_cookies:
+            logging.debug("Using cookies to save session")
+            s.cookies = http.cookiejar.LWPCookieJar(cookie_path)
+            if os.path.exists(cookie_path):
+                s.cookies.load(ignore_discard=True)
+                logging.debug("Loaded cookies: %s" % s.cookies)
 
         if sessiontoken is not None:
             r = s.post("%s?sessionToken=%s" % (
@@ -197,13 +198,18 @@ class OktaAWS(object):
         if not match:
             return None
 
-        s.cookies.save(ignore_discard=True)
+        if not self.args.no_cookies:
+            logging.debug("Saving session cookies")
+            s.cookies.save(ignore_discard=True)
         return html.unescape(match.group(1))
 
     def run(self):
-        # Try to get the saml assertion with save cookies first
-        logging.debug("Trying to get SAML assertion with pre-existing session")
-        saml_assertion = self.get_saml_assertion()
+        if not self.args.no_cookies:
+            # Try to get the saml assertion with saved cookies first
+            logging.debug("Trying to get SAML assertion with existing session")
+            saml_assertion = self.get_saml_assertion()
+        else:
+            saml_assertion = None
         # If it fails, then get the username and re-get the saml assertion
         if saml_assertion is None:
             print("Okta Username:", self.config['username'])
@@ -242,6 +248,8 @@ if __name__ == "__main__":
                         help='The AWS profile you want credentials for')
     parser.add_argument('--config', '-c', default='~/.okta_aws.toml',
                         help='Path to the configuration file')
+    parser.add_argument('--no-cookies', '-n', action='store_true',
+                        help="Don't use or save cookies to stay logged in")
     parser.add_argument('--debug', '-d', action='store_true',
                         help='Show debug output')
     parser.add_argument('--quiet', '-q', action='store_true',
