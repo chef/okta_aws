@@ -142,7 +142,7 @@ class OktaAWS(object):
                               "`brew install awscli`")
                 sys.exit(1)
             raise
-        aws_creds = json.loads(output)
+        aws_creds = json.loads(output.decode('utf-8'))
         return aws_creds['Credentials']
 
     def set_aws_config(self, profile, key, value):
