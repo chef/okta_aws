@@ -147,7 +147,7 @@ class OktaAWS(object):
 
     def set_aws_config(self, profile, key, value):
         subprocess.call(["aws", "configure", "set",
-                         "profile.%s.%s" % (profile, key), value])
+                         "--profile", profile, key, value])
 
     def store_aws_creds_in_profile(self, profile, aws_creds):
         self.set_aws_config(profile, "aws_access_key_id",
