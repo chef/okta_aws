@@ -19,13 +19,11 @@ import base64
 import getpass
 import json
 import html
-import http
 import logging
 import os
 import re
 import subprocess
 import sys
-from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 
 import requests
@@ -75,6 +73,8 @@ class OktaAWS(object):
 
         # Default configuration values
         config.setdefault('cookie_file', '~/.okta_aws_cookie')
+
+        config['cookie_file'] = os.path.expanduser(config['cookie_file'])
 
         return config
 
@@ -157,32 +157,66 @@ class OktaAWS(object):
         self.set_aws_config(profile, "aws_session_token",
                             aws_creds['SessionToken'])
 
+    def is_logged_in(self, session_id):
+        logging.debug("Verifying if we are already logged in")
+        r = requests.get("https://%s/api/v1/sessions/me" %
+                         self.config['okta_server'],
+                         cookies={"sid": session_id})
+        return r.status_code == 200
+
     def log_in_to_okta(self, password):
-        embed_url = urlparse(self.config['embed_url'])
         r = requests.post(
-            "https://%s/api/v1/authn" % embed_url.netloc,
+            "https://%s/api/v1/authn" % self.config['okta_server'],
             json={"username": self.config['username'], "password": password})
         if r.status_code != 200:
             logging.debug(r.text)
             return None
         return r.json()['sessionToken']
 
-    def get_saml_assertion(self, sessiontoken=None):
-        cookie_path = os.path.expanduser(self.config['cookie_file'])
-        s = requests.Session()
-        # Use a cookiejar implementation that we can save to a file with
-        if not self.args.no_cookies:
-            logging.debug("Using cookies to save session")
-            s.cookies = http.cookiejar.LWPCookieJar(cookie_path)
-            if os.path.exists(cookie_path):
-                s.cookies.load(ignore_discard=True)
-                logging.debug("Loaded cookies: %s" % s.cookies)
+    def get_session(self, sessionToken):
+        """Returns a (long lived) session ID given a (single use) session
+        token
+        """
+        r = requests.post(
+            "https://%s/api/v1/sessions" % self.config['okta_server'],
+            json={"sessionToken": sessionToken})
+        if r.status_code != 200:
+            logging.debug(r.text)
+            return None
+        return r.json()['id']
 
-        if sessiontoken is not None:
-            r = s.post("%s?sessionToken=%s" % (
-                self.config['embed_url'], sessiontoken))
-        else:
-            r = s.post(self.config['embed_url'])
+    def get_assigned_applications(self, session_id):
+        # TODO - proper pagination on this
+        logging.debug("Getting assigned application links from okta")
+        r = requests.get("https://%s/api/v1/users/me/appLinks?limit=1000" %
+                         self.config['okta_server'],
+                         cookies={"sid": session_id})
+        if r.status_code != 200:
+            logging.error("Error getting assigned application list")
+            logging.debug(r.text)
+            return None
+        applinks = {i['label']: i['linkUrl'] for i in r.json()
+                    if i['appName'] == 'amazon_aws'}
+        return applinks
+
+    def shorten_appnames(self, applinks):
+        """Converts long application names such as
+            'Company Engineering AWS (dev use)' to something suitable for us in
+            an aws profile such as 'company-engineering'
+        """
+        logging.debug("Shortening application names")
+        newapplinks = {}
+        for k, v in applinks.items():
+            newk = re.sub(" *AWS$", "", k)  # Remove AWS suffix
+            newk = re.sub(r" *\(.*\)", "", newk)  # Remove anything in parens
+            newk = newk.lower()
+            newk = re.sub(" +", "-", newk)
+            newapplinks[newk] = v
+            logging.debug("%s => %s" % (k, newk))
+        return newapplinks
+
+    def get_saml_assertion(self, session_id, app_url):
+        r = requests.post(app_url, cookies={"sid": session_id})
 
         if r.status_code != 200:
             logging.error("Error getting saml assertion. HTML response %s" %
@@ -191,24 +225,23 @@ class OktaAWS(object):
 
         match = re.search(r'<input name="SAMLResponse".*value="([^"]*)"',
                           r.text)
-
         if not match:
             return None
-
-        if not self.args.no_cookies:
-            logging.debug("Saving session cookies")
-            s.cookies.save(ignore_discard=True)
         return html.unescape(match.group(1))
 
     def run(self):
         if not self.args.no_cookies:
-            # Try to get the saml assertion with saved cookies first
-            logging.debug("Trying to get SAML assertion with existing session")
-            saml_assertion = self.get_saml_assertion()
-        else:
-            saml_assertion = None
-        # If it fails, then get the username and re-get the saml assertion
-        if saml_assertion is None:
+            if os.path.exists(self.config['cookie_file']):
+                logging.debug("Loading session ID from %s" %
+                              self.config['cookie_file'])
+                with open(self.config['cookie_file']) as fh:
+                    session_id = fh.read().rstrip("\n")
+                if not self.is_logged_in(session_id):
+                    session_id = None
+            else:
+                session_id = None
+
+        if session_id is None:
             print("Okta Username:", self.config['username'])
             password = ""
             while password == "":
@@ -220,10 +253,22 @@ class OktaAWS(object):
                 logging.error("Error logging into okta.")
                 sys.exit(1)
 
-            saml_assertion = self.get_saml_assertion(onetimetoken)
-            if saml_assertion is None:
-                logging.error("Problem getting SAML assertion")
-                sys.exit(1)
+            session_id = self.get_session_id(onetimetoken)
+            if not self.args.no_cookies:
+                logging.debug("Saving session cookie to %s" %
+                              self.config['cookie_file'])
+                with open(self.config['cookie_file'], 'w') as fh:
+                    fh.writeline(session_id)
+
+        applinks = self.get_assigned_applications(session_id)
+        # TODO - make this a config option
+        applinks = self.shorten_appnames(applinks)
+
+        saml_assertion = self.get_saml_assertion(
+            session_id, applinks[self.args.profile])
+        if saml_assertion is None:
+            logging.error("Problem getting SAML assertion")
+            sys.exit(1)
 
         principal_arn, role_arn = self.get_arns(saml_assertion)
 
@@ -246,7 +291,7 @@ if __name__ == "__main__":
     parser.add_argument('--config', '-c', default='~/.okta_aws.toml',
                         help='Path to the configuration file')
     parser.add_argument('--no-cookies', '-n', action='store_true',
-                        help="Don't use or save cookies to stay logged in")
+                        help="Don't use or save okta session cookie")
     parser.add_argument('--debug', '-d', action='store_true',
                         help='Show debug output')
     parser.add_argument('--quiet', '-q', action='store_true',
