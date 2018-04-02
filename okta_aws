@@ -53,15 +53,17 @@ class OktaAWS(object):
 
         toml_config.setdefault('general', {})
 
+        config = toml_config['general']
+
         try:
-            config = dict(toml_config['general'], **toml_config[profile])
+            config.update(**toml_config[profile])
         except KeyError:
-            logging.error("Unable to find profile %s in config file" % profile)
-            sys.exit(1)
+            # We don't have any profile-specific configuration
+            pass
 
         required_config_options = [
             'username',
-            'embed_url'
+            'okta_server'
         ]
 
         missing_options = [k for k in required_config_options
@@ -73,13 +75,33 @@ class OktaAWS(object):
 
         # Default configuration values
         config.setdefault('cookie_file', '~/.okta_aws_cookie')
+        config.setdefault('short_profile_names', True)
+        config.setdefault('session_duration', 3600)
 
         config['cookie_file'] = os.path.expanduser(config['cookie_file'])
 
         return config
 
+    def choose_from_menu(self, choices, prompt="Select an option: "):
+        # Present an interactive menu of choices for the user to pick from
+        # Returns the index into the list of the selected item
+        for idx, value in enumerate(choices):
+            print("%2d) %s" % (idx + 1, choices[idx]))
+        response = 0
+        while response < 1 or response > len(choices):
+            try:
+                response = int(input(prompt))
+            except ValueError:
+                # If we enter something invalid, just go through the
+                # loop again.
+                pass
+        return response - 1
+
     def select_role(self, arns):
-        # ARNS is a list of principal ARN, role ARN pairs.
+        # Returns the role to use from a list of principal/role arn pairs,
+        # based on either a configuration option, user selecting from a menu,
+        # or simply returning the only arn pair in the list if there is only
+        # one.
         selected = None
         if len(arns) > 1:
             if 'role_arn' in self.config:
@@ -96,17 +118,10 @@ class OktaAWS(object):
                 # default role didn't match any available roles. Ask the user
                 # to pick one.
                 print("Available roles")
-                for idx, role in enumerate(arns):
-                    print("%2d) %s" % (idx + 1, arns[idx][1].split('/')[-1]))
-                response = 0
-                while response < 1 or response > len(arns):
-                    try:
-                        response = int(input("Select role to log in with: "))
-                    except ValueError:
-                        # If we enter something invalid, just go through the
-                        # loop again.
-                        pass
-                selected = arns[response - 1]
+                response = self.choose_from_menu(
+                    [arn[1].split('/')[-1] for arn in arns],
+                    "Select role to log in with: ")
+                selected = arns[response]
         else:
             selected = arns[0]
         return selected
@@ -132,7 +147,8 @@ class OktaAWS(object):
                 "aws", "sts", "assume-role-with-saml",
                 "--role-arn", role_arn,
                 "--principal-arn", principal_arn,
-                "--saml-assertion", assertion])
+                "--saml-assertion", assertion,
+                "--duration-seconds", str(self.config['session_duration'])])
         except OSError as e:
             if e.errno == 2:
                 logging.error(
@@ -162,7 +178,9 @@ class OktaAWS(object):
         r = requests.get("https://%s/api/v1/sessions/me" %
                          self.config['okta_server'],
                          cookies={"sid": session_id})
-        return r.status_code == 200
+        logged_in = r.status_code == 200
+        logging.debug("Logged in: %s" % logged_in)
+        return logged_in
 
     def log_in_to_okta(self, password):
         r = requests.post(
@@ -229,6 +247,16 @@ class OktaAWS(object):
             return None
         return html.unescape(match.group(1))
 
+    def friendly_interval(self, seconds):
+        if seconds == 3600:
+            return "1 hour"
+        elif seconds >= 3600:
+            return "%.2g hours" % (seconds / 3600.0)
+        elif seconds == 60:
+            return "1 minute"
+        else:
+            return "%.2g minutes" % (seconds / 60.0)
+
     def run(self):
         if not self.args.no_cookies:
             if os.path.exists(self.config['cookie_file']):
@@ -236,7 +264,17 @@ class OktaAWS(object):
                               self.config['cookie_file'])
                 with open(self.config['cookie_file']) as fh:
                     session_id = fh.read().rstrip("\n")
-                if not self.is_logged_in(session_id):
+                    # Support old cookie file format
+                    if session_id.startswith('#LWP-Cookies-2.0'):
+                        logging.debug("Converting old cookie file format")
+                        m = re.search(r'sid="([^"]*)"', session_id)
+                        if m:
+                            logging.debug("Found session ID in old cookies")
+                            session_id = m.group(1)
+                        else:
+                            logging.debug("Didn't find session ID in cookies")
+                            session_id = None
+                if session_id and not self.is_logged_in(session_id):
                     session_id = None
             else:
                 session_id = None
@@ -261,8 +299,18 @@ class OktaAWS(object):
                     fh.writeline(session_id)
 
         applinks = self.get_assigned_applications(session_id)
-        # TODO - make this a config option
-        applinks = self.shorten_appnames(applinks)
+        if self.config['short_profile_names']:
+            applinks = self.shorten_appnames(applinks)
+
+        if self.args.profile not in applinks:
+            print("ERROR: %s isn't a valid profile name" % self.args.profile)
+            print("Valid profiles:", ', '.join(list(applinks.keys())))
+            sys.exit(1)
+
+        if self.args.list:
+            print("Available profiles:")
+            print("\n".join(list(applinks.keys())))
+            sys.exit(0)
 
         saml_assertion = self.get_saml_assertion(
             session_id, applinks[self.args.profile])
@@ -278,7 +326,8 @@ class OktaAWS(object):
         self.store_aws_creds_in_profile(self.args.profile, aws_creds)
         logging.info("Temporary credentials stored in profile %s" %
                      self.args.profile)
-        logging.info("Credentials expire in 1 hour")
+        logging.info("Credentials expire in %s" %
+                     self.friendly_interval(self.config['session_duration']))
 
 
 if __name__ == "__main__":
@@ -296,6 +345,9 @@ if __name__ == "__main__":
                         help='Show debug output')
     parser.add_argument('--quiet', '-q', action='store_true',
                         help='Only show error messages')
+    parser.add_argument('--list', '-l', action='store_true',
+                        help="Don't assume a role, list assigned "
+                        "applications in okta")
     args = parser.parse_args()
 
     oa = OktaAWS(args)
