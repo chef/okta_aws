@@ -302,15 +302,15 @@ class OktaAWS(object):
         if self.config['short_profile_names']:
             applinks = self.shorten_appnames(applinks)
 
-        if self.args.profile not in applinks:
-            print("ERROR: %s isn't a valid profile name" % self.args.profile)
-            print("Valid profiles:", ', '.join(list(applinks.keys())))
-            sys.exit(1)
-
         if self.args.list:
             print("Available profiles:")
             print("\n".join(list(applinks.keys())))
             sys.exit(0)
+
+        if self.args.profile not in applinks:
+            print("ERROR: %s isn't a valid profile name" % self.args.profile)
+            print("Valid profiles:", ', '.join(list(applinks.keys())))
+            sys.exit(1)
 
         saml_assertion = self.get_saml_assertion(
             session_id, applinks[self.args.profile])
