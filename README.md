@@ -1,6 +1,6 @@
 # Okta AWS tool
 
-This tool is for accessing the AWS API for an AWS account you normally log
+This tool is for accessing the AWS API for AWS accounts you normally log
 into via okta. Normally, when you log in to an account via okta, you are
 assigned an IAM role, and don't have an actual user within AWS. This means you
 don't have any API keys you can use to access the AWS API via the command
@@ -11,13 +11,24 @@ API keys you can use to access the AWS API with.
 
 ## Installation
 
-Clone this repository then run:
-
-    python setup.py install
+Okta_aws requires python 3 to run.
 
 If you have homebrew, you can use it to install okta_aws:
 
-    brew install https://raw.githubusercontent.com/chef/okta_aws/master/Formula/okta_aws.rb
+    brew tap chef/okta_aws
+    brew install okta_aws
+
+To do the same thing in one step, you can run:
+
+    brew install chef/okta_aws/okta_aws
+
+Alternatively, you can install via pip:
+
+    pip install okta_aws
+
+To install from git, clone this repository and run:
+
+    python setup.py install
 
 ## Setup
 
@@ -25,39 +36,66 @@ Make a file in your home directory called `.okta_aws.toml`:
 
     [general]
     username="yourusername"
-
-    [profilename]
-    embed_url="https://yourcompanyname.okta.com/home/amazon_aws/..."
-    #role_arn="aws:aws:iam::1234567890:role/Okta_User"
-    #role_arn="Okta_User"
+    okta_server="yourcompany.okta.com"
 
 The values are as follows:
 
-* `username`: your okta username
+* `username`: your okta username.
+* `okta_server`: the okta domain your company uses. It is usually something
+  like `yourcompanyname.okta.com`.
 
-Then there is a section for each AWS profile you wish to use. This lets you
-log into multiple AWS accounts from the same okta account. The name of this
-section corresponds to the name of the profile that you will use when
-accessing the AWS API (e.g. what you put after `--profile` when using the AWS
-cli tools).
+There are some optional settings too:
 
-Within each profile there are several settings:
+* `short_profile_names` - okta_aws will fetch a list of AWS accounts you have
+  been assigned directly from okta, and will use the name in okta as the
+  profile name referred to by the AWS tools. However, the name of the
+  application in okta is often verbose. With this option turned on (it
+  defaults to true), the profile names will be shortened into something easier
+  to type. For example 'MyCompany Engineering (all devs) AWS' will become
+  `mycompany-engineering`. The exact rules are:
+  * Any trailing 'AWS' suffix, if present, is removed
+  * Anything in parentheses is stripped
+  * Everything is converted to lowercaase
+  * Spaces are stripped and replaced with dashes
+* `cookie_file` - the location where the okta session cookie is stored. This
+  defaults to `~/.okta_aws_cookie`.
+* `session_duration` - How long to request that the AWS temporary credentials
+  should be valid for. This defaults to `3600` (1 hour), but you can choose a
+  shorter or longer value up to `43200` (12 hours).
+  * Note: in order to choose a session length longer than 1 hour, you need to
+    configure the role in AWS to allow longer sessions. In the IAM console,
+    find the role and exit the `Maximum CLI/API session duration` setting.
+* `role_arn` - the ARN or name of the role to assume. This only needs to be
+  set if you have more than one role and are prompted to select which role to
+  assume when you run okta_aws.
 
-* `embed_url` - this is App Embed Link you can find in the "General" tab when
-  looking at the application inside the okta admin console.
-* `role_arn`: This setting contains the role to assume when you log into
-  AWS via okta. You only need to provide this if you are assigned more than
-  one role in okta, and you don't want to be prompted for which role to assume
-  each time. You can provide either a full ARN here, or just the name of the
-  role itself.
+Each of these settings can be set per-profile. To do this, create a new
+section in the configuration file with the name of the profile, and put your
+per-profile settings here. For example, in order to use a longer session
+length for the `mycompany-dev` profile, add this to your `~/.okta_aws.toml`
+file:
 
-Note: If you have been instructed to download this tool, then these settings
-may have been provided to you already.
+```
+[mycompany-dev]
+session_duration = 43200
+```
+
+Or, if you are prompted when logging into the `mycompany-staging` profile
+which role you want to use, then you can configure a default role as follows:
+
+```
+[mycompany-staging]
+role_arn = "Okta_PowerUser"
+# Alternatively you can specify the full ARN
+# role_arn = "arn:aws:iam::1234567890:role/Okta_PowerUser"
+```
 
 ## Usage
 
 Run `okta_aws PROFILENAME`, or run `okta_aws` without any arguments and
 okta_aws will you the `AWS_PROFILE` environment variable if you have it set.
+
+To list the available profiles, run `okta_aws --list`.
 
 The first time you run `okta_aws`, you will be prompted for your okta username
 and password. On subsequent runs, if you are still logged into okta and your
