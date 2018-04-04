@@ -12,13 +12,15 @@
 
 ## Making the release
 
-* Edit setup.py and bump the version number
+* Edit okta_aws and bump the version number at the top (in the `__VERSION__`
+  variable)
 * Run `pipenv update` to update dependencies in Pipfile.lock
 * Commit changes to git
-* Tag the commit `git tag vX.Y.Z`
+* Tag the commit `git tag v$(./okta_aws --version)`
 * Push the changes `git push --tags origin master`
+* Remove any existing builds `rm -rf dist`
 * Run `python ./setup.py sdist` to build a source package
-* Run `twine upload` to upload the package to pypi.
+* Run `twine upload dist/*` to upload the package to pypi.
 * Update the homebrew formula:
   * Run `pipenv shell` in the okta_aws directory
   * Run `pip install homebrew-pypi-poet`

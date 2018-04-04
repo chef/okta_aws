@@ -29,6 +29,8 @@ import xml.etree.ElementTree as ET
 import requests
 import toml
 
+__VERSION__ = '0.3.1'
+
 
 class OktaAWS(object):
     def __init__(self, args):
@@ -349,6 +351,9 @@ if __name__ == "__main__":
     parser.add_argument('--list', '-l', action='store_true',
                         help="Don't assume a role, list assigned "
                         "applications in okta")
+    parser.add_argument('--version', '-v', action='version',
+                        version=__VERSION__,
+                        help='Show version of okta_aws and exit')
     args = parser.parse_args()
 
     oa = OktaAWS(args)
