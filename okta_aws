@@ -191,7 +191,7 @@ class OktaAWS(object):
             return None
         return r.json()['sessionToken']
 
-    def get_session(self, sessionToken):
+    def get_session_id(self, sessionToken):
         """Returns a (long lived) session ID given a (single use) session
         token
         """
@@ -274,7 +274,8 @@ class OktaAWS(object):
                         else:
                             logging.debug("Didn't find session ID in cookies")
                             session_id = None
-                if session_id and not self.is_logged_in(session_id):
+                if session_id is not None \
+                        and not self.is_logged_in(session_id):
                     session_id = None
             else:
                 session_id = None
@@ -296,7 +297,7 @@ class OktaAWS(object):
                 logging.debug("Saving session cookie to %s" %
                               self.config['cookie_file'])
                 with open(self.config['cookie_file'], 'w') as fh:
-                    fh.writeline(session_id)
+                    fh.write(session_id)
 
         applinks = self.get_assigned_applications(session_id)
         if self.config['short_profile_names']:
