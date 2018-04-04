@@ -36,6 +36,11 @@ class OktaAWS(object):
     def __init__(self, args):
         self.args = args
         self.setup_logging()
+
+        if args.setup:
+            self.interactive_setup(args.config)
+            sys.exit(0)
+
         self.config = self.load_config(args.config, args.profile)
 
     def setup_logging(self):
@@ -48,10 +53,46 @@ class OktaAWS(object):
         else:
             logging.basicConfig(format='%(message)s', level=logging.INFO)
 
+    def interactive_setup(self, config_file):
+        try:
+            toml_config = toml.load(os.path.expanduser(config_file))
+        except FileNotFoundError:
+            toml_config = {}
+        toml_config.setdefault('general', {})
+
+        default_username = toml_config['general'].get(
+            'username', getpass.getuser())
+        default_server = toml_config['general'].get(
+            'okta_server', 'example.okta.com')
+
+        print("Okta AWS initial setup")
+        print("======================")
+        print()
+        username = input("Enter your okta username [%s]: " % default_username)
+        if username == "":
+            username = default_username
+
+        okta_server = input("Enter your okta domain [%s]: " % default_server)
+        if okta_server == "":
+            okta_server = default_server
+
+        print()
+        print("Creating/updating %s" % config_file)
+        toml_config['general']['username'] = username
+        toml_config['general']['okta_server'] = okta_server
+        with open(os.path.expanduser(config_file), "w") as fh:
+            toml.dump(toml_config, fh)
+
+        print("Setup complete. You can now log in with okta_aws PROFILENAME.")
+        print("Hint: you can use 'okta_aws --list' to see which profiles "
+              "you can use.")
+
     def load_config(self, config_file, profile):
-        fh = open(os.path.expanduser(config_file))
-        toml_config = toml.loads(fh.read())
-        fh.close()
+        try:
+            toml_config = toml.load(os.path.expanduser(config_file))
+        except FileNotFoundError:
+            self.interactive_setup(config_file)
+            sys.exit(0)
 
         toml_config.setdefault('general', {})
 
@@ -354,6 +395,8 @@ if __name__ == "__main__":
     parser.add_argument('--version', '-v', action='version',
                         version=__VERSION__,
                         help='Show version of okta_aws and exit')
+    parser.add_argument('--setup', '-s', action='store_true',
+                        help="Set up a config file for okta_aws")
     args = parser.parse_args()
 
     oa = OktaAWS(args)
