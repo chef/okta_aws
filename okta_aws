@@ -22,6 +22,7 @@ import html
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -36,6 +37,8 @@ class OktaAWS(object):
     def __init__(self, args):
         self.args = args
         self.setup_logging()
+
+        self.preflight_checks()
 
         if args.setup:
             self.interactive_setup(args.config)
@@ -52,6 +55,21 @@ class OktaAWS(object):
             logging.basicConfig(format='%(message)s', level=logging.ERROR)
         else:
             logging.basicConfig(format='%(message)s', level=logging.INFO)
+
+    def preflight_checks(self):
+        errors = []
+        # AWS cli
+        if shutil.which("aws") is None:
+            errors.append("The AWS CLI (the 'aws' command) cannot be found. "
+                          "see http://docs.aws.amazon.com/cli/latest/"
+                          "userguide/installing.html for information on "
+                          "installing it.")
+        if errors:
+            print("Preflight check failed")
+            print("======================")
+            for e in errors:
+                print("* %s" % e)
+            sys.exit(1)
 
     def interactive_setup(self, config_file):
         try:
@@ -399,8 +417,8 @@ if __name__ == "__main__":
                         help="Set up a config file for okta_aws")
     args = parser.parse_args()
 
-    oa = OktaAWS(args)
     try:
+        oa = OktaAWS(args)
         oa.run()
     except KeyboardInterrupt:
         print("Exiting...")
