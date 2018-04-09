@@ -202,14 +202,24 @@ class OktaAWS(object):
         return selected
 
     def aws_assume_role(self, principal_arn, role_arn, assertion):
-        # Get credentials from aws
+        """Get credentials from aws"""
+
+        # Override AWS_PROFILE so aws sts doesn't complain if we have it set
+        # to a new profile that doesn't yet exist
+        newenv = os.environ.copy()
+        if 'AWS_PROFILE' in newenv:
+            del newenv['AWS_PROFILE']
+        if 'AWS_DEFAULT_PROFILE' in newenv:
+            del newenv['AWS_DEFAULT_PROFILE']
+
         try:
             output = subprocess.check_output([
                 "aws", "sts", "assume-role-with-saml",
                 "--role-arn", role_arn,
                 "--principal-arn", principal_arn,
                 "--saml-assertion", assertion,
-                "--duration-seconds", str(self.config['session_duration'])])
+                "--duration-seconds", str(self.config['session_duration'])],
+                                             env=newenv)
         except OSError as e:
             if e.errno == 2:
                 logging.error(
@@ -219,12 +229,25 @@ class OktaAWS(object):
                               "`brew install awscli`")
                 sys.exit(1)
             raise
+        except subprocess.CalledProcessError as e:
+            print("Error getting temporary credentials. Exiting...")
+            sys.exit(1)
+
         aws_creds = json.loads(output.decode('utf-8'))
         return aws_creds['Credentials']
 
     def set_aws_config(self, profile, key, value):
+        # Override AWS_PROFILE so aws sts doesn't complain if we have it set
+        # to a new profile that doesn't yet exist
+        newenv = os.environ.copy()
+        if 'AWS_PROFILE' in newenv:
+            del newenv['AWS_PROFILE']
+        if 'AWS_DEFAULT_PROFILE' in newenv:
+            del newenv['AWS_DEFAULT_PROFILE']
+
         subprocess.call(["aws", "configure", "set",
-                         "--profile", profile, key, value])
+                         "--profile", profile, key, value],
+                        env=newenv)
 
     def store_aws_creds_in_profile(self, profile, aws_creds):
         self.set_aws_config(profile, "aws_access_key_id",
