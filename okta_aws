@@ -30,7 +30,7 @@ import xml.etree.ElementTree as ET
 import requests
 import toml
 
-__VERSION__ = '0.3.2'
+__VERSION__ = '0.3.3'
 
 
 class OktaAWS(object):
