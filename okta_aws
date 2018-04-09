@@ -395,7 +395,7 @@ class OktaAWS(object):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Generates temporary AWS credentials for an AWS account'
-        'you access through okta.')
+        ' you access through okta.')
     parser.add_argument('profile', nargs='?',
                         default=os.getenv("AWS_PROFILE") or "default",
                         help='The AWS profile you want credentials for')
