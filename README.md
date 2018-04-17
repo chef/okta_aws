@@ -90,6 +90,33 @@ role_arn = "Okta_PowerUser"
 # role_arn = "arn:aws:iam::1234567890:role/Okta_PowerUser"
 ```
 
+### Profile aliases
+
+Sometimes, the profile name obtained from okta doesn't match the profile name
+you want to use in your AWS credentials file (for example, you might have a
+specific profile name hardcoded in scripts). In these cases, you can configure
+a profile name to be an _alias_ of another. To do this, add an `[aliases]`
+section to your `.okta_aws.toml` file. For example, if `okta_aws --list` shows
+an available profile of `companyname-engineering` but you have
+`engineering` configured as a profile name in your scripts, you can do:
+
+```
+[aliases]
+engineering = "companyname-engineering"
+```
+
+Then, you just set `AWS_PROFILE` to `engineering`, or pass `engineering` as an
+argument to okta_aws, and it will log in with the `companyname-engineering`
+profile, while storing the credentials in an `engineering` profile in your
+`~/.aws/credentials` file.
+
+If you want to configure profile specific settings for a profile that has an
+alias, you can configure them under either the profile name itself, or the
+alias. If you configure the settings under the 'real' name of the profile,
+then those settings will also be used if you refer to the profile by its
+alias. If you configure them under the alias, then they will only take effect
+if you refer to the profile by its alias.
+
 ## Usage
 
 Run `okta_aws PROFILENAME`, or run `okta_aws` without any arguments and

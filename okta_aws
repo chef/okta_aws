@@ -44,7 +44,7 @@ class OktaAWS(object):
             self.interactive_setup(args.config)
             sys.exit(0)
 
-        self.config = self.load_config(args.config, args.profile)
+        self.config, self.aliases = self.load_config(args.config, args.profile)
 
     def setup_logging(self):
         if self.args.debug:
@@ -113,8 +113,20 @@ class OktaAWS(object):
             sys.exit(0)
 
         toml_config.setdefault('general', {})
+        toml_config.setdefault('aliases', {})
 
         config = toml_config['general']
+
+        # If the current profile is an alias for another profile, then try
+        # loading any profile specific configuration for the other profile
+        # first.
+        try:
+            real_profile = toml_config['aliases'][profile]
+            config.update(**toml_config[real_profile])
+        except KeyError:
+            # Either no alias, or no profile specific configuration for the
+            # other profile.
+            pass
 
         try:
             config.update(**toml_config[profile])
@@ -141,7 +153,7 @@ class OktaAWS(object):
 
         config['cookie_file'] = os.path.expanduser(config['cookie_file'])
 
-        return config
+        return config, toml_config['aliases']
 
     def choose_from_menu(self, choices, prompt="Select an option: "):
         # Present an interactive menu of choices for the user to pick from
@@ -389,16 +401,33 @@ class OktaAWS(object):
 
         if self.args.list:
             print("Available profiles:")
+            reverse_aliases = {}
+            for k, v in self.aliases.items():
+                reverse_aliases.setdefault(v, []).append(k)
+            for profile in applinks.keys():
+                if profile in reverse_aliases:
+                    print("%s (Aliases: %s)" % (profile, ', '.join(
+                        reverse_aliases[profile])))
+                else:
+                    print(profile)
+
             print("\n".join(list(applinks.keys())))
             sys.exit(0)
 
-        if self.args.profile not in applinks:
-            print("ERROR: %s isn't a valid profile name" % self.args.profile)
+        # Resolve any profile alias and store it in real_profile
+        real_profile = self.aliases.get(args.profile, args.profile)
+
+        if real_profile not in applinks:
+            alias_msg = ""
+            if real_profile != self.args.profile:
+                alias_msg = " (an alias that resolved to %s)" % real_profile
+            print("ERROR: %s%s isn't a valid profile name" % (
+                self.args.profile, alias_msg))
             print("Valid profiles:", ', '.join(list(applinks.keys())))
             sys.exit(1)
 
         saml_assertion = self.get_saml_assertion(
-            session_id, applinks[self.args.profile])
+            session_id, applinks[real_profile])
         if saml_assertion is None:
             logging.error("Problem getting SAML assertion")
             sys.exit(1)
