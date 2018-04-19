@@ -120,7 +120,9 @@ if you refer to the profile by its alias.
 ## Usage
 
 Run `okta_aws PROFILENAME`, or run `okta_aws` without any arguments and
-okta_aws will you the `AWS_PROFILE` environment variable if you have it set.
+okta_aws will use the `AWS_PROFILE` environment variable if you have it set.
+
+To fetch credentials for all profiles you have access to, run `okta_aws --all`.
 
 To list the available profiles, run `okta_aws --list`.
 
