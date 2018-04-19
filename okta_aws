@@ -378,7 +378,7 @@ class OktaAWS(object):
         logging.info("Assuming AWS role %s..." % role_arn.split("/")[-1])
         aws_creds = self.aws_assume_role(principal_arn, role_arn,
                                          saml_assertion)
-        self.store_aws_creds_in_profile(self.args.profile, aws_creds)
+        self.store_aws_creds_in_profile(profile, aws_creds)
         logging.info("Temporary credentials stored in profile %s" %
                      profile)
         logging.info("Credentials expire in %s" %
