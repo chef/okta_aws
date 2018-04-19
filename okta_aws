@@ -380,7 +380,7 @@ class OktaAWS(object):
                                          saml_assertion)
         self.store_aws_creds_in_profile(self.args.profile, aws_creds)
         logging.info("Temporary credentials stored in profile %s" %
-                     self.args.profile)
+                     profile)
         logging.info("Credentials expire in %s" %
                      self.friendly_interval(self.config['session_duration']))
 
