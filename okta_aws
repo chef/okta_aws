@@ -354,11 +354,7 @@ class OktaAWS(object):
             return "%.2g minutes" % (seconds / 60.0)
 
     def fetch_credentials(self, profile, applinks, session_id):
-        # print("Self: ", self)
-        print("Profile: ", profile)
-        # print("Ummm: ", self.args.profile)
-        # print("Applinks: ", applinks)
-        # print("Session_id: ", session_id)
+        self.config, self.aliases = self.load_config(args.config, profile)
         # Resolve any profile alias and store it in real_profile
         real_profile = self.aliases.get(profile, profile)
 
