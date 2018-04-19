@@ -353,6 +353,37 @@ class OktaAWS(object):
         else:
             return "%.2g minutes" % (seconds / 60.0)
 
+    def fetch_credentials(self, profile, applinks, session_id):
+        self.config, self.aliases = self.load_config(args.config, profile)
+        # Resolve any profile alias and store it in real_profile
+        real_profile = self.aliases.get(profile, profile)
+
+        if real_profile not in applinks:
+            alias_msg = ""
+            if real_profile != profile:
+                alias_msg = " (an alias that resolved to %s)" % real_profile
+            print("ERROR: %s%s isn't a valid profile name" % (
+                profile, alias_msg))
+            print("Valid profiles:", ', '.join(list(applinks.keys())))
+            sys.exit(1)
+
+        saml_assertion = self.get_saml_assertion(
+            session_id, applinks[real_profile])
+        if saml_assertion is None:
+            logging.error("Problem getting SAML assertion")
+            sys.exit(1)
+
+        principal_arn, role_arn = self.get_arns(saml_assertion)
+
+        logging.info("Assuming AWS role %s..." % role_arn.split("/")[-1])
+        aws_creds = self.aws_assume_role(principal_arn, role_arn,
+                                         saml_assertion)
+        self.store_aws_creds_in_profile(self.args.profile, aws_creds)
+        logging.info("Temporary credentials stored in profile %s" %
+                     self.args.profile)
+        logging.info("Credentials expire in %s" %
+                     self.friendly_interval(self.config['session_duration']))
+
     def run(self):
         if not self.args.no_cookies:
             if os.path.exists(self.config['cookie_file']):
@@ -399,6 +430,12 @@ class OktaAWS(object):
         if self.config['short_profile_names']:
             applinks = self.shorten_appnames(applinks)
 
+        if self.args.all:
+            for profile in applinks.keys():
+                print("Fetching credentials for:", profile)
+                self.fetch_credentials(profile, applinks, session_id)
+            sys.exit(0)
+
         if self.args.list:
             print("Available profiles:")
             reverse_aliases = {}
@@ -414,35 +451,7 @@ class OktaAWS(object):
             print("\n".join(list(applinks.keys())))
             sys.exit(0)
 
-        # Resolve any profile alias and store it in real_profile
-        real_profile = self.aliases.get(args.profile, args.profile)
-
-        if real_profile not in applinks:
-            alias_msg = ""
-            if real_profile != self.args.profile:
-                alias_msg = " (an alias that resolved to %s)" % real_profile
-            print("ERROR: %s%s isn't a valid profile name" % (
-                self.args.profile, alias_msg))
-            print("Valid profiles:", ', '.join(list(applinks.keys())))
-            sys.exit(1)
-
-        saml_assertion = self.get_saml_assertion(
-            session_id, applinks[real_profile])
-        if saml_assertion is None:
-            logging.error("Problem getting SAML assertion")
-            sys.exit(1)
-
-        principal_arn, role_arn = self.get_arns(saml_assertion)
-
-        logging.info("Assuming AWS role %s..." % role_arn.split("/")[-1])
-        aws_creds = self.aws_assume_role(principal_arn, role_arn,
-                                         saml_assertion)
-        self.store_aws_creds_in_profile(self.args.profile, aws_creds)
-        logging.info("Temporary credentials stored in profile %s" %
-                     self.args.profile)
-        logging.info("Credentials expire in %s" %
-                     self.friendly_interval(self.config['session_duration']))
-
+        self.fetch_credentials(args.profile, applinks, session_id)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -462,6 +471,8 @@ if __name__ == "__main__":
     parser.add_argument('--list', '-l', action='store_true',
                         help="Don't assume a role, list assigned "
                         "applications in okta")
+    parser.add_argument('--all', '-a', action='store_true',
+                        help='Assume a role in all assigned accounts')
     parser.add_argument('--version', '-v', action='version',
                         version=__VERSION__,
                         help='Show version of okta_aws and exit')
