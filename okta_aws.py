@@ -34,23 +34,54 @@ __VERSION__ = '0.4.0'
 
 
 class OktaAWS(object):
-    def __init__(self, args):
+    def __init__(self, argv=None):
         """Initialize the program
 
-        args - the parsed command line arguments/options
+        argv - command line arguments (or None to use sys.argv)
         """
-        self.args = args
-        self.profile = args.profile
+        self.args = self.parse_args(argv)
+        self.profile = self.args.profile
 
         self.setup_logging()
 
         self.preflight_checks()
 
-        if args.setup:
-            self.interactive_setup(args.config)
+        if self.args.setup:
+            self.interactive_setup(self.args.config)
             sys.exit(0)
 
-        self.config = self.load_config(args.config)
+        self.config = self.load_config(self.args.config)
+
+    def parse_args(self, argv):
+        """Parses command line arguments using argparse
+
+        argv - command line arguments (or None to use sys.argv)
+        """
+        parser = argparse.ArgumentParser(
+            description='Generates temporary AWS credentials for an AWS'
+            ' account you access through okta.')
+        parser.add_argument('profile', nargs='?',
+                            default=os.getenv("AWS_PROFILE") or "default",
+                            help='The AWS profile you want credentials for')
+        parser.add_argument('--config', '-c', default='~/.okta_aws.toml',
+                            help='Path to the configuration file')
+        parser.add_argument('--no-cookies', '-n', action='store_true',
+                            help="Don't use or save okta session cookie")
+        parser.add_argument('--debug', '-d', action='store_true',
+                            help='Show debug output')
+        parser.add_argument('--quiet', '-q', action='store_true',
+                            help='Only show error messages')
+        parser.add_argument('--list', '-l', action='store_true',
+                            help="Don't assume a role, list assigned "
+                            "applications in okta")
+        parser.add_argument('--all', '-a', action='store_true',
+                            help='Assume a role in all assigned accounts')
+        parser.add_argument('--version', '-v', action='version',
+                            version=__VERSION__,
+                            help='Show version of okta_aws and exit')
+        parser.add_argument('--setup', '-s', action='store_true',
+                            help="Set up a config file for okta_aws")
+        return parser.parse_args(argv)
 
     def setup_logging(self):
         """Sets up logging based on whether debugging is enabled or not"""
@@ -548,33 +579,7 @@ class OktaAWS(object):
 
 
 if __name__ == "__main__":
-    PARSER = argparse.ArgumentParser(
-        description='Generates temporary AWS credentials for an AWS account'
-        ' you access through okta.')
-    PARSER.add_argument('profile', nargs='?',
-                        default=os.getenv("AWS_PROFILE") or "default",
-                        help='The AWS profile you want credentials for')
-    PARSER.add_argument('--config', '-c', default='~/.okta_aws.toml',
-                        help='Path to the configuration file')
-    PARSER.add_argument('--no-cookies', '-n', action='store_true',
-                        help="Don't use or save okta session cookie")
-    PARSER.add_argument('--debug', '-d', action='store_true',
-                        help='Show debug output')
-    PARSER.add_argument('--quiet', '-q', action='store_true',
-                        help='Only show error messages')
-    PARSER.add_argument('--list', '-l', action='store_true',
-                        help="Don't assume a role, list assigned "
-                        "applications in okta")
-    PARSER.add_argument('--all', '-a', action='store_true',
-                        help='Assume a role in all assigned accounts')
-    PARSER.add_argument('--version', '-v', action='version',
-                        version=__VERSION__,
-                        help='Show version of okta_aws and exit')
-    PARSER.add_argument('--setup', '-s', action='store_true',
-                        help="Set up a config file for okta_aws")
-
     try:
-        OKTA_AWS = OktaAWS(PARSER.parse_args())
-        OKTA_AWS.run()
+        OktaAWS().run()
     except KeyboardInterrupt:
         print("Exiting...")
