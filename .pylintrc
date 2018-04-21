@@ -1,0 +1,15 @@
+[MESSAGES CONTROL]
+
+disable=no-self-use
+
+# Good variable names which should always be accepted, separated by a comma
+good-names=i, # Indices
+           j,
+           k,
+           fh, # File handle
+           m,  # Regex match
+           v,  # Value (used with k for key)
+           kv, # Key/Value pairs
+           r,  # Result from requests.get
+           e,  # exception
+           _

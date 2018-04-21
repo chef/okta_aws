@@ -35,6 +35,10 @@ __VERSION__ = '0.4.0'
 
 class OktaAWS(object):
     def __init__(self, args):
+        """Initialize the program
+
+        args - the parsed command line arguments/options
+        """
         self.args = args
         self.profile = args.profile
 
@@ -49,6 +53,7 @@ class OktaAWS(object):
         self.config = self.load_config(args.config)
 
     def setup_logging(self):
+        """Sets up logging based on whether debugging is enabled or not"""
         if self.args.debug:
             logging.basicConfig(
                 format='%(asctime)s %(levelname)s %(message)s',
@@ -59,6 +64,10 @@ class OktaAWS(object):
             logging.basicConfig(format='%(message)s', level=logging.INFO)
 
     def preflight_checks(self):
+        """Performs some checks to ensure that the program can be run
+        successfully. If these checks fail, an explanation is given as well as
+        a hint for how the user can fix the problem.
+        """
         errors = []
         # AWS cli
         if shutil.which("aws") is None:
@@ -74,6 +83,9 @@ class OktaAWS(object):
             sys.exit(1)
 
     def interactive_setup(self, config_file):
+        """Performs first-time setup for users who haven't set up a config
+        file yet, by asking some simple questions.
+        """
         try:
             toml_config = toml.load(os.path.expanduser(config_file))
         except FileNotFoundError:
@@ -108,6 +120,11 @@ class OktaAWS(object):
               "you can use.")
 
     def load_config(self, config_file):
+        """Loads the config file and returns a dictionary containing its
+        contents.
+
+        config_file - path to the configuration file to load
+        """
         try:
             config = toml.load(os.path.expanduser(config_file))
         except FileNotFoundError:
@@ -125,7 +142,7 @@ class OktaAWS(object):
         missing_options = [k for k in required_config_options
                            if k not in config['general']]
         if missing_options:
-            logging.error("Missing required configuration settings: %s" %
+            logging.error("Missing required configuration settings: %s",
                           ', '.join(missing_options))
             sys.exit(1)
 
@@ -152,10 +169,15 @@ class OktaAWS(object):
                 return self.config['general'].get(key, default)
 
     def choose_from_menu(self, choices, prompt="Select an option: "):
-        # Present an interactive menu of choices for the user to pick from
-        # Returns the index into the list of the selected item
+        """Present an interactive menu of choices for the user to pick from.
+
+        Returns the index into the list of the selected item.
+
+        choices - a list of options to choose from
+        prompt  - the prompt to show to the user
+        """
         for idx, value in enumerate(choices):
-            print("%2d) %s" % (idx + 1, choices[idx]))
+            print("%2d) %s" % (idx + 1, value))
         response = 0
         while response < 1 or response > len(choices):
             try:
@@ -167,16 +189,19 @@ class OktaAWS(object):
         return response - 1
 
     def select_role(self, arns):
-        # Returns the role to use from a list of principal/role arn pairs,
-        # based on either a configuration option, user selecting from a menu,
-        # or simply returning the only arn pair in the list if there is only
-        # one.
+        """Returns the role to use from a list of principal/role arn pairs,
+        based on either a configuration option, user selecting from a menu,
+        or simply returning the only arn pair in the list if there is only
+        one.
+
+        arns - a list of arn pairs (each pair should be a princpal/role arn)
+        """
         selected = None
         if len(arns) > 1:
             role_arn = self.get_config('role_arn')
             if role_arn is not None:
                 # First check to see if we configured a default role
-                logging.debug("Looking for configured role: %s" % role_arn)
+                logging.debug("Looking for configured role: %s", role_arn)
                 for arn in arns:
                     # Use endswith here so we can provide just a role name
                     # instead of the full ARN.
@@ -196,6 +221,11 @@ class OktaAWS(object):
         return selected
 
     def get_arns(self, saml_assertion):
+        """Extracts the available principal/role ARNS for a user given a
+        base64 encoded SAML assertion returned by okta.
+
+        saml_assertion - the saml asssertion given by okta, base64 encoded.
+        """
         parsed = ET.fromstring(base64.b64decode(saml_assertion))
         # Horrible xpath expression to dig into the ARNs
         elems = parsed.findall(
@@ -205,12 +235,22 @@ class OktaAWS(object):
         arns = [e.text.split(",", 1) for e in elems]
         selected = self.select_role(arns)
         # Returns principal_arn, role_arn
-        logging.debug("Principal ARN: %s" % selected[0])
-        logging.debug("Role ARN: %s" % selected[1])
+        logging.debug("Principal ARN: %s", selected[0])
+        logging.debug("Role ARN: %s", selected[1])
         return selected
 
     def aws_assume_role(self, principal_arn, role_arn, assertion, duration):
-        """Get credentials from aws"""
+        """Gets temporary credentials from aws. Returns a dictionary
+        containing the temporary credentials.
+
+        principal_arn - the principal_arn (obtained from saml assertion)
+        role_arn  - the arn of the role to assume (obtained from saml
+                    assertion)
+        assertion - the saml assertion itself (base64 encoded)
+        duration  - how long to request the credentials be valid for in
+                    seconds. This can't be longer than AWS allows (3600 by
+                    default, may be configured to be as long as 43200)
+        """
 
         # Override AWS_PROFILE so aws sts doesn't complain if we have it set
         # to a new profile that doesn't yet exist
@@ -245,6 +285,13 @@ class OktaAWS(object):
         return aws_creds['Credentials']
 
     def set_aws_config(self, profile, key, value):
+        """Sets a single AWS configuration option. Used to store the temporary
+        credentials in ~/.aws/credentials.
+
+        profile - the profile to set the configuration option under
+        key     - the option to change
+        value   - the value to change it to
+        """
         # Override AWS_PROFILE so aws sts doesn't complain if we have it set
         # to a new profile that doesn't yet exist
         newenv = os.environ.copy()
@@ -258,6 +305,11 @@ class OktaAWS(object):
                         env=newenv)
 
     def store_aws_creds_in_profile(self, profile, aws_creds):
+        """Stores the temporary AWS credentials in ~/.aws/credentials.
+
+        profile - the profile to store the credentials under
+        aws_creds - a dictionary containing the credentials returned from AWS
+        """
         self.set_aws_config(profile, "aws_access_key_id",
                             aws_creds['AccessKeyId'])
         self.set_aws_config(profile, "aws_secret_access_key",
@@ -266,15 +318,26 @@ class OktaAWS(object):
                             aws_creds['SessionToken'])
 
     def is_logged_in(self, session_id):
+        """Checks to see if a given okta session ID is still valid. Will return
+        false if the session has expired and we are no longer logged in to
+        okta.
+
+        session_id - the session token that we are verifying
+        """
         logging.debug("Verifying if we are already logged in")
         r = requests.get("https://%s/api/v1/sessions/me" %
                          self.get_config('okta_server'),
                          cookies={"sid": session_id})
         logged_in = r.status_code == 200
-        logging.debug("Logged in: %s" % logged_in)
+        logging.debug("Logged in: %s", logged_in)
         return logged_in
 
     def log_in_to_okta(self, password):
+        """Logs in to okta using the authn API, returning a single use session
+        token that can be exchanged for a long lived session ID.
+
+        password - the user's okta password
+        """
         r = requests.post(
             "https://%s/api/v1/authn" % self.get_config('okta_server'),
             json={
@@ -286,19 +349,27 @@ class OktaAWS(object):
             return None
         return r.json()['sessionToken']
 
-    def get_session_id(self, sessionToken):
+    def get_session_id(self, session_token):
         """Returns a (long lived) session ID given a (single use) session
-        token
+        token.
+
+        session_token - the single use token returned when logging in to okta
         """
         r = requests.post(
             "https://%s/api/v1/sessions" % self.get_config('okta_server'),
-            json={"sessionToken": sessionToken})
+            json={"sessionToken": session_token})
         if r.status_code != 200:
             logging.debug(r.text)
             return None
         return r.json()['id']
 
     def get_assigned_applications(self, session_id):
+        """Queries okta to get a list of AWS applications that have been
+        assigned to the user. Returns a dictionary mapping the profile names
+        to log in URLs for each assigned application.
+
+        session_id - the okta session ID needed to make api calls
+        """
         # TODO - proper pagination on this
         logging.debug("Getting assigned application links from okta")
         r = requests.get("https://%s/api/v1/users/me/appLinks?limit=1000" %
@@ -314,8 +385,10 @@ class OktaAWS(object):
 
     def shorten_appnames(self, applinks):
         """Converts long application names such as
-            'Company Engineering AWS (dev use)' to something suitable for us in
-            an aws profile such as 'company-engineering'
+        'Company Engineering AWS (dev use)' to something suitable for use in
+        an aws profile such as 'company-engineering'.
+
+        applinks - a dictionary mapping application names to application links.
         """
         logging.debug("Shortening application names")
         newapplinks = {}
@@ -325,14 +398,20 @@ class OktaAWS(object):
             newk = newk.lower()
             newk = re.sub(" +", "-", newk)
             newapplinks[newk] = v
-            logging.debug("%s => %s" % (k, newk))
+            logging.debug("%s => %s", k, newk)
         return newapplinks
 
     def get_saml_assertion(self, session_id, app_url):
+        """Sends a request to the application link, and extracts a SAML
+        assertion from the response.
+
+        session_id - okta session ID needed to make api calls
+        app_url    - The URL used to log in to the okta application
+        """
         r = requests.post(app_url, cookies={"sid": session_id})
 
         if r.status_code != 200:
-            logging.error("Error getting saml assertion. HTML response %s" %
+            logging.error("Error getting saml assertion. HTML response %s",
                           r.status_code)
             return None
 
@@ -343,16 +422,28 @@ class OktaAWS(object):
         return html.unescape(match.group(1))
 
     def friendly_interval(self, seconds):
+        """Converts a number of seconds into something a little friendlier,
+        such as '10 minutes' or '1 hour'.
+
+        seconds - an integer number of seconds to convert
+        """
         if seconds == 3600:
             return "1 hour"
         elif seconds >= 3600:
             return "%.2g hours" % (seconds / 3600.0)
         elif seconds == 60:
             return "1 minute"
-        else:
-            return "%.2g minutes" % (seconds / 60.0)
+        return "%.2g minutes" % (seconds / 60.0)
 
     def fetch_credentials(self, applinks, session_id):
+        """Performs the various steps needed to actually get a set of
+        temporary credentials and store them. Doesn't return anything, but
+        temporary credentials should be stored in ~/.aws/credentials by the
+        time this method has finished.
+
+        applinks   - a mapping of profile names to application links
+        session_id - okta session ID needed to make API calls
+        """
         # Resolve any profile alias and store it in real_profile
         real_profile = self.config['aliases'].get(self.profile, self.profile)
 
@@ -373,20 +464,22 @@ class OktaAWS(object):
 
         principal_arn, role_arn = self.get_arns(saml_assertion)
 
-        logging.info("Assuming AWS role %s..." % role_arn.split("/")[-1])
+        logging.info("Assuming AWS role %s...", role_arn.split("/")[-1])
         session_duration = self.get_config('session_duration')
         aws_creds = self.aws_assume_role(principal_arn, role_arn,
                                          saml_assertion, session_duration)
         self.store_aws_creds_in_profile(self.profile, aws_creds)
-        logging.info("Temporary credentials stored in profile %s" %
+        logging.info("Temporary credentials stored in profile %s",
                      self.profile)
-        logging.info("Credentials expire in %s" %
+        logging.info("Credentials expire in %s",
                      self.friendly_interval(session_duration))
 
     def run(self):
+        """Main entry point for the application after parsing command line
+        arguments."""
         if not self.args.no_cookies:
             if os.path.exists(self.get_config('cookie_file')):
-                logging.debug("Loading session ID from %s" %
+                logging.debug("Loading session ID from %s",
                               self.get_config('cookie_file'))
                 with open(self.get_config('cookie_file')) as fh:
                     session_id = fh.read().rstrip("\n")
@@ -420,7 +513,7 @@ class OktaAWS(object):
 
             session_id = self.get_session_id(onetimetoken)
             if not self.args.no_cookies:
-                logging.debug("Saving session cookie to %s" %
+                logging.debug("Saving session cookie to %s",
                               self.get_config('cookie_file'))
                 with open(self.get_config('cookie_file'), 'w') as fh:
                     fh.write(session_id)
@@ -455,34 +548,33 @@ class OktaAWS(object):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
+    PARSER = argparse.ArgumentParser(
         description='Generates temporary AWS credentials for an AWS account'
         ' you access through okta.')
-    parser.add_argument('profile', nargs='?',
+    PARSER.add_argument('profile', nargs='?',
                         default=os.getenv("AWS_PROFILE") or "default",
                         help='The AWS profile you want credentials for')
-    parser.add_argument('--config', '-c', default='~/.okta_aws.toml',
+    PARSER.add_argument('--config', '-c', default='~/.okta_aws.toml',
                         help='Path to the configuration file')
-    parser.add_argument('--no-cookies', '-n', action='store_true',
+    PARSER.add_argument('--no-cookies', '-n', action='store_true',
                         help="Don't use or save okta session cookie")
-    parser.add_argument('--debug', '-d', action='store_true',
+    PARSER.add_argument('--debug', '-d', action='store_true',
                         help='Show debug output')
-    parser.add_argument('--quiet', '-q', action='store_true',
+    PARSER.add_argument('--quiet', '-q', action='store_true',
                         help='Only show error messages')
-    parser.add_argument('--list', '-l', action='store_true',
+    PARSER.add_argument('--list', '-l', action='store_true',
                         help="Don't assume a role, list assigned "
                         "applications in okta")
-    parser.add_argument('--all', '-a', action='store_true',
+    PARSER.add_argument('--all', '-a', action='store_true',
                         help='Assume a role in all assigned accounts')
-    parser.add_argument('--version', '-v', action='version',
+    PARSER.add_argument('--version', '-v', action='version',
                         version=__VERSION__,
                         help='Show version of okta_aws and exit')
-    parser.add_argument('--setup', '-s', action='store_true',
+    PARSER.add_argument('--setup', '-s', action='store_true',
                         help="Set up a config file for okta_aws")
-    args = parser.parse_args()
 
     try:
-        oa = OktaAWS(args)
-        oa.run()
+        OKTA_AWS = OktaAWS(PARSER.parse_args())
+        OKTA_AWS.run()
     except KeyboardInterrupt:
         print("Exiting...")
