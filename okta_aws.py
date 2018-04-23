@@ -572,7 +572,6 @@ class OktaAWS(object):
                 else:
                     print(profile)
 
-            print("\n".join(list(applinks.keys())))
             sys.exit(0)
 
         self.fetch_credentials(applinks, session_id)
