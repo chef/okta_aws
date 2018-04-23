@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-import okta_aws
+from okta_aws import okta_aws
 
 
 class TestFriendlyInterval(unittest.TestCase):

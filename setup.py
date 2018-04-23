@@ -4,7 +4,8 @@ from setuptools import setup
 
 
 def find_version():
-    with open(os.path.join(os.path.dirname(__file__), 'okta_aws')) as fh:
+    with open(os.path.join(os.path.dirname(__file__),
+                           'okta_aws/okta_aws.py')) as fh:
         content = fh.read()
         m = re.search(r"^__VERSION__ = ['\"]([^'\"]*)['\"]", content, re.M)
         if m:
@@ -19,7 +20,8 @@ setup(
     author='Mark Harrison',
     author_email='mharrison@chef.io',
     license='Apache-2.0',
-    scripts=['okta_aws'],
+    packages=['okta_aws'],
+    entry_points={"console_scripts": ['okta_aws=okta_aws.__main__:main']},
     url='https://github.com/chef/okta_aws',
     python_requires='>=3',
     install_requires=['requests>=2.18.4', 'toml>=0.9.4']

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # Copyright 2017 Chef Software
 #
@@ -575,10 +574,3 @@ class OktaAWS(object):
             sys.exit(0)
 
         self.fetch_credentials(applinks, session_id)
-
-
-if __name__ == "__main__":
-    try:
-        OktaAWS().run()
-    except KeyboardInterrupt:
-        print("Exiting...")
