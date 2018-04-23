@@ -24,5 +24,7 @@ setup(
     entry_points={"console_scripts": ['okta_aws=okta_aws.__main__:main']},
     url='https://github.com/chef/okta_aws',
     python_requires='>=3',
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest', 'pytest_datadir'],
     install_requires=['requests>=2.18.4', 'toml>=0.9.4']
 )
