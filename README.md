@@ -1,5 +1,7 @@
 # Okta AWS tool
 
+[![Build Status](https://travis-ci.org/chef/okta_aws.svg?branch=master)](https://travis-ci.org/chef/okta_aws)
+
 This tool is for accessing the AWS API for AWS accounts you normally log
 into via okta. Normally, when you log in to an account via okta, you are
 assigned an IAM role, and don't have an actual user within AWS. This means you
