@@ -41,16 +41,6 @@ class OktaAWS(object):
         self.args = self.parse_args(argv)
         self.profile = self.args.profile
 
-        self.setup_logging()
-
-        self.preflight_checks()
-
-        if self.args.setup:
-            self.interactive_setup(self.args.config)
-            sys.exit(0)
-
-        self.config = self.load_config(self.args.config)
-
     def parse_args(self, argv):
         """Parses command line arguments using argparse
 
@@ -507,6 +497,16 @@ class OktaAWS(object):
     def run(self):
         """Main entry point for the application after parsing command line
         arguments."""
+        self.setup_logging()
+
+        self.preflight_checks()
+
+        if self.args.setup:
+            self.interactive_setup(self.args.config)
+            sys.exit(0)
+
+        self.config = self.load_config(self.args.config)
+
         if not self.args.no_cookies:
             if os.path.exists(self.get_config('cookie_file')):
                 logging.debug("Loading session ID from %s",
