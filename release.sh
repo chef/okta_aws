@@ -1,17 +1,19 @@
 #!/bin/bash
 VERSION="$1"
 
+VERSION_FILE="okta_aws/okta_aws.py"
+
 if [[ -z $VERSION ]]; then
     echo "Usage: $0 VERSION"
-    echo "Current version: $(grep ^__VERSION__ okta_aws | awk '{print $NF}')"
+    echo "Current version: $(grep ^__VERSION__ $VERSION_FILE | awk '{print $NF}')"
     exit 1
 fi
 
 echo "=> Bumping version in okta_aws to $VERSION"
-sed -i "" "s/^__VERSION__ = .*$/__VERSION__ = '$VERSION'/" okta_aws
+sed -i "" "s/^__VERSION__ = .*$/__VERSION__ = '$VERSION'/" "$VERSION_FILE"
 
 echo "=> Committing to git"
-git add okta_aws
+git add "$VERSION_FILE"
 git commit -m "Release v$VERSION"
 
 echo "=> Tagging release"
