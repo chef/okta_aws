@@ -29,7 +29,7 @@ import xml.etree.ElementTree as ET
 import requests
 import toml
 
-__VERSION__ = '0.4.0'
+__VERSION__ = '0.5.0'
 
 
 class OktaAWS(object):
