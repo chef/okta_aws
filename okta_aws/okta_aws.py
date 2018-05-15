@@ -29,7 +29,10 @@ import xml.etree.ElementTree as ET
 import requests
 import toml
 
-__VERSION__ = '0.5.0'
+from okta_aws import exceptions
+
+
+__VERSION__ = '0.5.1'
 
 
 class OktaAWS(object):
@@ -364,10 +367,24 @@ class OktaAWS(object):
                 "username": self.get_config('username'),
                 "password": password
             })
+        if r.status_code == 401:
+            raise exceptions.LoginError("Incorrect password")
         if r.status_code != 200:
             logging.debug(r.text)
-            return None
-        return r.json()['sessionToken']
+            raise exceptions.LoginError(
+                "Login request returned HTTP status %s" % r.status_code)
+        session_data = r.json()
+        if 'status' not in session_data:
+            logging.error(session_data)
+            raise exceptions.LoginError(
+                "Unknown error (missing status field in response)")
+        if session_data['status'] != 'SUCCESS':
+            raise exceptions.LoginError(
+                session_data['status'].title().replace('_', ' '))
+        if 'sessionToken' not in session_data:
+            logging.debug(session_data)
+            raise exceptions.LoginError("Missing session token")
+        return session_data['sessionToken']
 
     def get_session_id(self, session_token):
         """Returns a (long lived) session ID given a (single use) session
@@ -536,9 +553,10 @@ class OktaAWS(object):
                 password = getpass.getpass("Okta Password: ")
             sys.stdout.flush()
 
-            onetimetoken = self.log_in_to_okta(password)
-            if onetimetoken is None:
-                logging.error("Error logging into okta.")
+            try:
+                onetimetoken = self.log_in_to_okta(password)
+            except exceptions.LoginError as e:
+                logging.error("Error logging into okta: %s", e.message)
                 sys.exit(1)
 
             session_id = self.get_session_id(onetimetoken)
