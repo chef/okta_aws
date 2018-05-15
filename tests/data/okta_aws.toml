@@ -1,0 +1,4 @@
+# Sample config file
+[general]
+username="fakey"
+okta_server="example.okta.com"
