@@ -545,6 +545,8 @@ class OktaAWS(object):
                     session_id = None
             else:
                 session_id = None
+        else:
+            session_id = None
 
         if session_id is None:
             print("Okta Username:", self.get_config('username'))
