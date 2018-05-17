@@ -293,18 +293,25 @@ class OktaAWS(object):
                                              env=newenv)
         except OSError as e:
             if e.errno == 2:
-                logging.error(
-                    "The AWS CLI cannot be found, see: http://docs.aws"
-                    ".amazon.com/cli/latest/userguide/installing.html")
-                logging.error("If you are on a mac with homebrew, run "
-                              "`brew install awscli`")
-                sys.exit(1)
-            raise
-        except subprocess.CalledProcessError as e:
-            print("Error getting temporary credentials. Exiting...")
-            sys.exit(1)
+                raise exceptions.AssumeRoleError("AWS CLI cannot be found")
+            raise exceptions.AssumeRoleError(str(e))
 
-        aws_creds = json.loads(output.decode('utf-8'))
+        except subprocess.CalledProcessError as e:
+            logging.debug("Command was: %s", e.cmd)
+            raise exceptions.AssumeRoleError("aws command exited with %s" %
+                                             e.returncode)
+
+        try:
+            aws_creds = json.loads(output.decode('utf-8'))
+        except json.decoder.JSONDecodeError as e:
+            logging.debug("Output was: %s" % output.decode('utf-8'))
+            raise exceptions.AssumeRoleError("JSON decode error: %s" % e)
+
+        if 'Credentials' not in aws_creds:
+            logging.debug("aws_creds json is: %s" % aws_creds)
+            raise exceptions.AssumeRoleError("Credentials key not in returned"
+                                             " json")
+
         return aws_creds['Credentials']
 
     def set_aws_config(self, profile, key, value):
@@ -503,8 +510,12 @@ class OktaAWS(object):
 
         logging.info("Assuming AWS role %s...", role_arn.split("/")[-1])
         session_duration = self.get_config('session_duration')
-        aws_creds = self.aws_assume_role(principal_arn, role_arn,
-                                         saml_assertion, session_duration)
+        try:
+            aws_creds = self.aws_assume_role(principal_arn, role_arn,
+                                             saml_assertion, session_duration)
+        except exceptions.AssumeRoleError as e:
+            logging.error("Unable to get temporary credentials: %s", e)
+            sys.exit(1)
         self.store_aws_creds_in_profile(self.profile, aws_creds)
         logging.info("Temporary credentials stored in profile %s",
                      self.profile)
