@@ -283,21 +283,23 @@ class OktaAWS(object):
         if 'AWS_DEFAULT_PROFILE' in newenv:
             del newenv['AWS_DEFAULT_PROFILE']
 
+        command = [
+            "aws", "sts", "assume-role-with-saml",
+            "--role-arn", role_arn,
+            "--principal-arn", principal_arn,
+            "--saml-assertion", assertion,
+            "--duration-seconds", str(duration)
+        ]
+        logging.debug("Command: %s", command)
+
         try:
-            output = subprocess.check_output([
-                "aws", "sts", "assume-role-with-saml",
-                "--role-arn", role_arn,
-                "--principal-arn", principal_arn,
-                "--saml-assertion", assertion,
-                "--duration-seconds", str(duration)],
-                                             env=newenv)
+            output = subprocess.check_output(command, env=newenv)
         except OSError as e:
             if e.errno == 2:
                 raise exceptions.AssumeRoleError("AWS CLI cannot be found")
             raise exceptions.AssumeRoleError(str(e))
 
         except subprocess.CalledProcessError as e:
-            logging.debug("Command was: %s", e.cmd)
             raise exceptions.AssumeRoleError("aws command exited with %s" %
                                              e.returncode)
 
