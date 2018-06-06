@@ -285,6 +285,7 @@ class OktaAWS(object):
 
         command = [
             "aws", "sts", "assume-role-with-saml",
+            "--output", "json",
             "--role-arn", role_arn,
             "--principal-arn", principal_arn,
             "--saml-assertion", assertion,
