@@ -32,7 +32,7 @@ import toml
 from okta_aws import exceptions
 
 
-__VERSION__ = '0.5.2'
+__VERSION__ = '0.5.3'
 
 
 class OktaAWS(object):
