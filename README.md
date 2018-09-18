@@ -156,3 +156,6 @@ expires):
 
 okta_aws will run without prompting for anything one you have logged in and,
 if necessary, configured a default profile in `~/.okta_aws.toml`.
+
+Users of zsh may find this `oh-my-zsh` plugin useful for shell-integrated
+auto-refresh:  [okta-aws plugin for zsh](https://gist.github.com/irvingpop/8e4e3bc63497be3432e695a52ef885f0)
