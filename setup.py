@@ -26,5 +26,5 @@ setup(
     python_requires='>=3',
     setup_requires=['pytest-runner'],
     tests_require=['pytest', 'pytest_datadir'],
-    install_requires=['requests>=2.18.4', 'toml>=0.9.4']
+    install_requires=['requests>=2.20.1', 'toml>=0.10.0']
 )
