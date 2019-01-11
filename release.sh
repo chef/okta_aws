@@ -9,6 +9,15 @@ if [[ -z $VERSION ]]; then
     exit 1
 fi
 
+# Make sure required commands are installed first
+for i in twine python git; do
+    if ! command -v twine >/dev/null; then
+        echo "You need to have $i installed. Please install it and try"
+        echo "running this again. See RELEASE.md for more information"
+        exit 1
+    fi
+done
+
 echo "=> Bumping version in okta_aws to $VERSION"
 sed -i "" "s/^__VERSION__ = .*$/__VERSION__ = '$VERSION'/" "$VERSION_FILE"
 
