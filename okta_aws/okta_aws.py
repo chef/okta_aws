@@ -365,6 +365,29 @@ class OktaAWS(object):
         logging.debug("Logged in: %s", logged_in)
         return logged_in
 
+
+    def verify_totp_factor(self, url, statetoken):
+        """Verifies the totp factor passcode, returning a single use session 
+        token that can be exchanged for a long lived session ID.
+
+        url - the totp factor verification url
+        statetoken - the state token provided when verifying totp factor
+        """
+        passcode = input("Enter your passcodeq: ")
+        r = requests.post(url,
+            json={
+                "stateToken": statetoken,
+                "passCode": passcode
+                })
+        if r.status_code == 403:
+            raise exceptions.LoginError("Incorrect passcode")
+        if r.status_code != 200:
+            logging.debug(r.text)
+            raise exceptions.LoginError(
+                "Login request returned HTTP status %s" % r.status_code)
+        return r.json()
+
+
     def log_in_to_okta(self, password):
         """Logs in to okta using the authn API, returning a single use session
         token that can be exchanged for a long lived session ID.
@@ -388,6 +411,14 @@ class OktaAWS(object):
             logging.error(session_data)
             raise exceptions.LoginError(
                 "Unknown error (missing status field in response)")
+        if session_data['status'] == 'MFA_REQUIRED':
+            logging.debug('MFA Required')
+            statetoken = session_data["stateToken"]
+            for factor in session_data["_embedded"]["factors"]:
+                # TODO - Add other factors
+                if factor["factorType"] == "token:software:totp":
+                    url = factor["_links"]["verify"]["href"]
+                    session_data = self.verify_totp_factor(url, statetoken)
         if session_data['status'] != 'SUCCESS':
             raise exceptions.LoginError(
                 session_data['status'].title().replace('_', ' '))
