@@ -373,7 +373,7 @@ class OktaAWS(object):
         url - the totp factor verification url
         statetoken - the state token provided when verifying totp factor
         """
-        passcode = input("Enter your passcodeq: ")
+        passcode = input("Enter your passcode: ")
         r = requests.post(url,
             json={
                 "stateToken": statetoken,
