@@ -346,9 +346,8 @@ class OktaAWS(object):
         logging.debug("Logged in: %s", logged_in)
         return logged_in
 
-
     def verify_totp_factor(self, url, statetoken):
-        """Verifies the totp factor passcode, returning a single use session 
+        """Verifies the totp factor passcode, returning a single use session
         token that can be exchanged for a long lived session ID.
 
         url - the totp factor verification url
@@ -356,10 +355,10 @@ class OktaAWS(object):
         """
         passcode = input("Enter your passcode: ")
         r = requests.post(url,
-            json={
-                "stateToken": statetoken,
-                "passCode": passcode
-                })
+                          json={
+                              "stateToken": statetoken,
+                              "passCode": passcode
+                          })
         if r.status_code == 403:
             raise exceptions.LoginError("Incorrect passcode")
         if r.status_code != 200:
@@ -367,7 +366,6 @@ class OktaAWS(object):
             raise exceptions.LoginError(
                 "Login request returned HTTP status %s" % r.status_code)
         return r.json()
-
 
     def log_in_to_okta(self, password):
         """Logs in to okta using the authn API, returning a single use session
