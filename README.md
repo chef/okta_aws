@@ -159,3 +159,14 @@ if necessary, configured a default profile in `~/.okta_aws.toml`.
 
 Users of zsh may find this `oh-my-zsh` plugin useful for shell-integrated
 auto-refresh:  [okta-aws plugin for zsh](https://gist.github.com/irvingpop/8e4e3bc63497be3432e695a52ef885f0)
+
+## Similar projects
+
+* [okta-aws-cli-assume-role](https://github.com/oktadeveloper/okta-aws-cli-assume-role) - Okta's own tool
+* [oktaauth](https://github.com/ThoughtWorksInc/oktaauth) - Python library for working with okta
+* [segmentio/aws-okta](https://github.com/segmentio/aws-okta) - uses assumerole
+  to connect to multiple aws accounts while signing into a primary aws account
+  in okta.
+* [aws-vault](https://github.com/99designs/aws-vault) - tool for securely storing aws credentials
+* [okta_aws_login](https://github.com/nimbusscale/okta_aws_login)
+* [okta-awscli](https://github.com/jmhale/okta-awscli)
