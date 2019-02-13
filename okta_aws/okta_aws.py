@@ -86,6 +86,10 @@ class OktaAWS(object):
         else:
             logging.basicConfig(format='%(message)s', level=logging.INFO)
 
+        if not self.args.debug:
+            logging.getLogger('boto3').setLevel(logging.ERROR)
+            logging.getLogger('botocore').setLevel(logging.ERROR)
+
     def preflight_checks(self):
         """Performs some checks to ensure that the program can be run
         successfully. If these checks fail, an explanation is given as well as
