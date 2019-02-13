@@ -279,10 +279,23 @@ class OktaAWS(object):
                     default, may be configured to be as long as 43200)
         """
 
-        # Override AWS_PROFILE so aws sts doesn't complain if we have it set
-        # to a new profile that doesn't yet exist
-        boto3.setup_default_session(profile_name='default')
+        # Override AWS_PROFILE so boto3 doesn't complain if we have it set
+        # to a new profile that doesn't yet exist. This is needed because
+        # boto3 will use environment variables if you don't pass in a profile,
+        # but will complain if you do pass in a profile that doesn't exist.
+        oldenv = os.environ
+        if 'AWS_PROFILE' in os.environ:
+            del os.environ['AWS_PROFILE']
+        if 'AWS_DEFAULT_PROFILE' in os.environ:
+            del os.environ['AWS_DEFAULT_PROFILE']
+
         client = boto3.client('sts')
+
+        # And restore them once more
+        if 'AWS_PROFILE' in oldenv:
+            os.environ['AWS_PROFILE'] = oldenv['AWS_PROFILE']
+        if 'AWS_DEFAULT_PROFILE' in oldenv:
+            os.environ['AWS_DEFAULT_PROFILE'] = oldenv['AWS_DEFAULT_PROFILE']
 
         aws_creds = client.assume_role_with_saml(
             RoleArn=role_arn,
