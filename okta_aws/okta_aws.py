@@ -16,7 +16,6 @@
 import argparse
 import base64
 import getpass
-import json
 import html
 import logging
 import os
@@ -28,6 +27,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 import toml
+import boto3
 
 from okta_aws import exceptions
 
@@ -277,38 +277,15 @@ class OktaAWS(object):
 
         # Override AWS_PROFILE so aws sts doesn't complain if we have it set
         # to a new profile that doesn't yet exist
-        newenv = os.environ.copy()
-        if 'AWS_PROFILE' in newenv:
-            del newenv['AWS_PROFILE']
-        if 'AWS_DEFAULT_PROFILE' in newenv:
-            del newenv['AWS_DEFAULT_PROFILE']
+        boto3.setup_default_session(profile_name='default')
+        client = boto3.client('sts')
 
-        command = [
-            "aws", "sts", "assume-role-with-saml",
-            "--output", "json",
-            "--role-arn", role_arn,
-            "--principal-arn", principal_arn,
-            "--saml-assertion", assertion,
-            "--duration-seconds", str(duration)
-        ]
-        logging.debug("Command: %s", command)
-
-        try:
-            output = subprocess.check_output(command, env=newenv)
-        except OSError as e:
-            if e.errno == 2:
-                raise exceptions.AssumeRoleError("AWS CLI cannot be found")
-            raise exceptions.AssumeRoleError(str(e))
-
-        except subprocess.CalledProcessError as e:
-            raise exceptions.AssumeRoleError("aws command exited with %s" %
-                                             e.returncode)
-
-        try:
-            aws_creds = json.loads(output.decode('utf-8'))
-        except json.decoder.JSONDecodeError as e:
-            logging.debug("Output was: %s" % output.decode('utf-8'))
-            raise exceptions.AssumeRoleError("JSON decode error: %s" % e)
+        aws_creds = client.assume_role_with_saml(
+            RoleArn=role_arn,
+            PrincipalArn=principal_arn,
+            SAMLAssertion=assertion,
+            DurationSeconds=duration
+            )
 
         if 'Credentials' not in aws_creds:
             logging.debug("aws_creds json is: %s" % aws_creds)
@@ -333,7 +310,7 @@ class OktaAWS(object):
         if 'AWS_DEFAULT_PROFILE' in newenv:
             del newenv['AWS_DEFAULT_PROFILE']
 
-        subprocess.call(["aws", "configure", "set",
+        subprocess.call([shutil.which("aws"), "configure", "set",
                          "--profile", profile, key, value],
                         env=newenv)
 
