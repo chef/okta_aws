@@ -13,9 +13,11 @@ API keys you can use to access the AWS API with.
 
 ## Installation
 
-Okta_aws requires python 3 to run.
+Okta_aws requires Python 3 to run.
 
-If you have homebrew, you can use it to install okta_aws:
+### macOS
+
+If you have [Homebrew](https://brew.sh), you can use it to install `okta_aws`:
 
     brew tap chef/okta_aws
     brew install okta_aws
@@ -24,11 +26,31 @@ To do the same thing in one step, you can run:
 
     brew install chef/okta_aws/okta_aws
 
-Alternatively, you can install via pip:
+### Linux (Ubuntu)
+
+Due to a [bug](https://github.com/aws/aws-cli/issues/3820) in the
+version of the AWS CLI found in Ubuntu packages, you will need to use
+the AWS CLI installed via `pip` instead (`okta_aws` currently
+interacts with the AWS API via the CLI).
+
+Once you have installed the newer AWS CLI, you can install `okta_aws`
+using `pip`:
+
+    sudo apt-get remove awscli
+    sudo apt-get install python3 python3-pip
+    sudo python3 -m pip install --upgrade awscli
+    sudo python3 -m pip install --upgrade okta_aws
+
+
+### Pip
+
+Alternatively, you can install via `pip`:
 
     pip install okta_aws
 
-To install from git, clone this repository and run:
+### Source
+
+To install from source, clone this repository and run:
 
     python setup.py install
 
