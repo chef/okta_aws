@@ -68,6 +68,8 @@ class OktaAWS(object):
                             "applications in okta")
         parser.add_argument('--all', '-a', action='store_true',
                             help='Assume a role in all assigned accounts')
+        parser.add_argument('--role_arn', '-r',
+                            help='Role name or ARN to assume')
         parser.add_argument('--version', '-v', action='version',
                             version=__VERSION__,
                             help='Show version of okta_aws and exit')
@@ -225,7 +227,8 @@ class OktaAWS(object):
         """
         selected = None
         if len(arns) > 1:
-            role_arn = self.get_config('role_arn')
+            # Get role via config, but allow commandline override
+            role_arn = self.get_config('role_arn') or self.args.role_arn
             if role_arn is not None:
                 # First check to see if we configured a default role
                 logging.debug("Looking for configured role: %s", role_arn)
