@@ -32,7 +32,7 @@ import boto3
 from okta_aws import exceptions
 
 
-__VERSION__ = '0.5.4'
+__VERSION__ = '0.6.0'
 
 
 class OktaAWS(object):
