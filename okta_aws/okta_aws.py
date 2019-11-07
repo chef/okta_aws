@@ -291,8 +291,12 @@ class OktaAWS(object):
             del os.environ['AWS_PROFILE']
         if 'AWS_DEFAULT_PROFILE' in os.environ:
             del os.environ['AWS_DEFAULT_PROFILE']
+        if 'govcloud' in self.profile:
+            region_name = 'us-gov-east-1'
+        else:
+            region_name = 'us-east-1'
 
-        client = boto3.client('sts')
+        client = boto3.client('sts', region_name=region_name)
 
         # And restore them once more
         if 'AWS_PROFILE' in oldenv:
