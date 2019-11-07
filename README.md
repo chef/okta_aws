@@ -141,6 +141,11 @@ then those settings will also be used if you refer to the profile by its
 alias. If you configure them under the alias, then they will only take effect
 if you refer to the profile by its alias.
 
+### GovCloud
+
+If the profile name includes 'govcloud', then okta_aws will use the appropriate
+region for fetching govcloud credentials (us-gov-east-1).
+
 ## Usage
 
 Run `okta_aws PROFILENAME`, or run `okta_aws` without any arguments and
@@ -170,11 +175,12 @@ re-run okta_aws.
 ### Automatically refreshing the token
 
 You can run okta_aws a second time to retrieve a new token before the old one
-expires. If you wish, you can run the following to automatically refresh the
-token once every 55 minutes (allowing some grace period before the token
+expires. If you wish, you can run one of the following to automatically refresh
+the token once every 55 minutes (allowing some grace period before the token
 expires):
 
     while true; do okta_aws PROFILENAME; sleep 3300; done
+    while true; do okta_aws --all; sleep 3300; done
 
 okta_aws will run without prompting for anything one you have logged in and,
 if necessary, configured a default profile in `~/.okta_aws.toml`.
