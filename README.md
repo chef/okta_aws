@@ -188,6 +188,15 @@ if necessary, configured a default profile in `~/.okta_aws.toml`.
 Users of zsh may find this `oh-my-zsh` plugin useful for shell-integrated
 auto-refresh:  [okta-aws plugin for zsh](https://gist.github.com/irvingpop/8e4e3bc63497be3432e695a52ef885f0)
 
+## Troubleshooting
+
+If you're having issues running okta_aws, there's a few things to check:
+`okta_aws --version` - should match most recent
+`python --version` - should be 3.X
+
+We also recently saw someone where the error looked like this, user had environment variables set that put python 3.6 directories first in the PATH, when python 3.7 was installed. Removing those lines from `.bash_profile` fixed the issue:
+`-bash: /Library/Frameworks/Python.framework/Versions/3.6/bin/okta_aws: /usr/local/Cellar/okta_aws/0.5.3/libexec/bin/python3.7: bad interpreter: No such file or directory`
+
 ## Similar projects
 
 * [okta-aws-cli-assume-role](https://github.com/oktadeveloper/okta-aws-cli-assume-role) - Okta's own tool
